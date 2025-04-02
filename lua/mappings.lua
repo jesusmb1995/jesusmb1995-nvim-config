@@ -31,4 +31,21 @@ if vim.env.NVIM_MINIMAL == nil then
   end, { desc = "Toggle Automatic Autocompletion Dropdown CMP" })
 end
 
+map("n", "<leader>X", ":tabclose | bdelete<CR>", { desc = "Close current tab and its buffers" })
+
+map("n", "<leader>B", ":tabnew %<CR>", { desc = "Open current window in new tab" })
+
+-- cursor
+if vim.env.NVIM_MINIMAL == nil then
+  map("n", "<C-S-l>", function()
+    -- Get current directory and file
+    local cwd = vim.fn.getcwd()
+    local current_file = vim.fn.expand "%:p"
+    -- Open folder and file in VS Code, then trigger new chat
+    local system_command = "cursor " .. cwd .. " " .. current_file .. " --command workbench.action.chat.newChat"
+    -- print(system_command)
+    vim.fn.system(system_command)
+  end, { desc = "Open folder and file in VS Code, start new chat" })
+end
+
 -- map({ "n", "i", "v" }, "<C-s>", "<cmd> w <cr>")
