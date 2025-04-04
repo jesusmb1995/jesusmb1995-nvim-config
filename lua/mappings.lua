@@ -42,7 +42,7 @@ if vim.env.NVIM_MINIMAL == nil then
     local cwd = vim.fn.getcwd()
     local current_file = vim.fn.expand "%:p"
     -- Open folder and file in VS Code, then trigger new chat
-    local system_command = "cursor " .. cwd .. " " .. current_file .. " --command workbench.action.chat.newChat 2> /dev/null & disown || true"
+    local system_command = "cursor " .. cwd .. " " .. current_file .. ":" .. vim.fn.line(".") .. " --command workbench.action.chat.newChat 2> /dev/null & disown || true"
     -- print(system_command)
     vim.fn.system(system_command)
   end, { desc = "Open folder and file in VS Code, start new chat" })
