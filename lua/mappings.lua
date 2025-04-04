@@ -42,10 +42,14 @@ if vim.env.NVIM_MINIMAL == nil then
     local cwd = vim.fn.getcwd()
     local current_file = vim.fn.expand "%:p"
     -- Open folder and file in VS Code, then trigger new chat
-    local system_command = "cursor " .. cwd .. " " .. current_file .. " --command workbench.action.chat.newChat 2>&1 /dev/null & disown"
+    local system_command = "cursor " .. cwd .. " " .. current_file .. " --command workbench.action.chat.newChat 2> /dev/null & disown || true"
     -- print(system_command)
     vim.fn.system(system_command)
   end, { desc = "Open folder and file in VS Code, start new chat" })
+
+  map("n", "<F4>", ":%bd|e#<CR>", { desc = "Close all buffers except current" })
+
+  -- TODO shorcut close all windows except :only the editor ones 
 end
 
 -- map({ "n", "i", "v" }, "<C-s>", "<cmd> w <cr>")
