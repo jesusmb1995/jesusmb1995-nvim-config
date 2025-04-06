@@ -8,6 +8,7 @@ return {
   config = function()
     require("no-neck-pain").setup {
       width = 120,
+      minSideBufferWidth = 12,
       autocmds = {
         skipEnteringNoNeckPainBuffer = true,
       },

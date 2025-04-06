@@ -103,10 +103,22 @@ if vim.env.NVIM_MINIMAL == nil then
   vim.keymap.set("n", "<leader>np", ":NoNeckPain<CR>", { noremap = true, silent = true, desc = "No neck pain toggle" })
 
   -- Automatically resize window on display change
-  vim.api.nvim_create_autocmd('VimResized', {
-    pattern = '*',
+  vim.api.nvim_create_autocmd("VimResized", {
+    pattern = "*",
     callback = function()
-      vim.cmd("wincmd =")
+      vim.cmd "wincmd ="
+      local ok, nvim_tree = pcall(require, "nvim-tree.api")
+      if ok and nvim_tree.tree.is_visible() then
+        vim.defer_fn(function()
+          nvim_tree.tree.close()
+        end, 100)
+      end
     end,
   })
+
+  -- Automatically trigger reisze of winodws when nvimtree is opened
+  local nvim_tree_events = require "nvim-tree.events"
+  nvim_tree_events.subscribe(nvim_tree_events.Event.TreeOpen, function()
+    vim.cmd "wincmd ="
+  end)
 end
