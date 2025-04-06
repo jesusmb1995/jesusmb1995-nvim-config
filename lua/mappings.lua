@@ -144,7 +144,7 @@ if vim.env.NVIM_MINIMAL == nil then
             -- Somehow width is not accurate wrp of how it appears on the screen, adjust by 30.
             local win_width = vim.api.nvim_win_get_width(win)
             local win_height = vim.api.nvim_win_get_height(win)
-            local is_vertical = win_height >= win_width-30
+            local is_vertical = win_height >= win_width - 30
             -- vim.notify(
             --   string.format(
             --     "Win: %d, Width: %d, Height: %d, Vertical: %s, Columns: %d",
@@ -158,7 +158,7 @@ if vim.env.NVIM_MINIMAL == nil then
             -- )
 
             if is_vertical and win_width > (current_columns / 2) then
-                vim.api.nvim_win_close(win, true)
+              vim.api.nvim_win_close(win, true)
             end
           end
         end
@@ -169,13 +169,39 @@ if vim.env.NVIM_MINIMAL == nil then
     end,
   })
 
+  -- TODO automatically toggle back no-neck-pain if closed...
+  -- TODO .. and fix resizing twice to 80 then 120 
+
   -- Automatically trigger reisze of windows when nvimtree is opened
   local nvim_tree_events = require "nvim-tree.events"
   nvim_tree_events.subscribe(nvim_tree_events.Event.TreeOpen, function()
-
-    -- Toggle NoNeckPain off if there are more than 2 vertical buffers and terminal in total
-    -- TODO
-    
-    vim.cmd "wincmd ="
+    local vertical_count = 0
+    local defered = false
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+      local buf = vim.api.nvim_win_get_buf(win)
+      if
+        vim.api.nvim_get_option_value("buftype", { buf = buf }) == ""
+        or vim.api.nvim_get_option_value("buftype", { buf = buf }) == "terminal"
+      then
+        local win_width = vim.api.nvim_win_get_width(win)
+        local win_height = vim.api.nvim_win_get_height(win)
+        local is_vertical = win_height >= win_width - 30
+        if is_vertical then
+          vertical_count = vertical_count + 1
+        end
+        if vertical_count > 2 then
+          defered = true
+          vim.defer_fn(function()
+            require("no-neck-pain").toggle(false)
+            vim.cmd.NvimTreeResize(30)
+            vim.cmd "wincmd ="
+          end, 30)
+          break
+        end
+      end
+    end
+    if not defered then
+      vim.cmd "wincmd ="
+    end
   end)
 end
