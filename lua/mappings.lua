@@ -102,16 +102,49 @@ if vim.env.NVIM_MINIMAL == nil then
 
   vim.keymap.set("n", "<leader>np", ":NoNeckPain<CR>", { noremap = true, silent = true, desc = "No neck pain toggle" })
 
+  -- Dont resize terminals vertically.
+  vim.api.nvim_create_autocmd("TermOpen", {
+    pattern = "*",
+    callback = function()
+      vim.api.nvim_set_option_value("winfixwidth", true, {})
+      vim.api.nvim_set_option_value("winfixheight", true, {})
+    end,
+  })
+  -- Neither when toggle hide. Force reapply option.
+  vim.api.nvim_create_autocmd("BufWinEnter", {
+    pattern = "*",
+    callback = function()
+      if vim.bo.buftype == "terminal" then
+          vim.api.nvim_set_option_value("winfixwidth", true, {})
+          vim.api.nvim_set_option_value("winfixheight", true, {})
+      end
+    end,
+  })
+
   -- Automatically resize window on display change
   vim.api.nvim_create_autocmd("VimResized", {
     pattern = "*",
     callback = function()
       vim.cmd "wincmd ="
+
+      -- Close nvim tree to avoid weird effects.
       local ok, nvim_tree = pcall(require, "nvim-tree.api")
       if ok and nvim_tree.tree.is_visible() then
         vim.defer_fn(function()
           nvim_tree.tree.close()
         end, 100)
+      end
+
+      -- Close vertical toggleable terminals if window is too smaller
+      local current_columns = vim.o.columns
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        local buf = vim.api.nvim_win_get_buf(win)
+        if vim.api.nvim_buf_get_option(buf, 'buftype') == 'terminal' then
+          local win_width = vim.api.nvim_win_get_width(win)
+          if win_width > (current_columns / 2) then
+            vim.api.nvim_win_close(win, true)
+          end
+        end
       end
     end,
   })
