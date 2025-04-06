@@ -115,8 +115,8 @@ if vim.env.NVIM_MINIMAL == nil then
     pattern = "*",
     callback = function()
       if vim.bo.buftype == "terminal" then
-          vim.api.nvim_set_option_value("winfixwidth", true, {})
-          vim.api.nvim_set_option_value("winfixheight", true, {})
+        vim.api.nvim_set_option_value("winfixwidth", true, {})
+        vim.api.nvim_set_option_value("winfixheight", true, {})
       end
     end,
   })
@@ -132,20 +132,39 @@ if vim.env.NVIM_MINIMAL == nil then
       if ok and nvim_tree.tree.is_visible() then
         vim.defer_fn(function()
           nvim_tree.tree.close()
-        end, 100)
+        end, 70)
       end
 
       -- Close vertical toggleable terminals if window is too smaller
-      local current_columns = vim.o.columns
-      for _, win in ipairs(vim.api.nvim_list_wins()) do
-        local buf = vim.api.nvim_win_get_buf(win)
-        if vim.api.nvim_buf_get_option(buf, 'buftype') == 'terminal' then
-          local win_width = vim.api.nvim_win_get_width(win)
-          if win_width > (current_columns / 2) then
-            vim.api.nvim_win_close(win, true)
+      vim.defer_fn(function()
+        local current_columns = vim.o.columns
+        for _, win in ipairs(vim.api.nvim_list_wins()) do
+          local buf = vim.api.nvim_win_get_buf(win)
+
+          if vim.api.nvim_get_option_value("buftype", { buf = buf }) == "terminal" then
+            -- Check if the terminal is vertical (height larger than width)
+            -- Somehow width is not accurate wrp of how it appears on the screen, adjust by 30.
+            local win_width = vim.api.nvim_win_get_width(win)
+            local win_height = vim.api.nvim_win_get_height(win)
+            local is_vertical = win_height >= win_width-30
+            -- vim.notify(
+            --   string.format(
+            --     "Win: %d, Width: %d, Height: %d, Vertical: %s, Columns: %d",
+            --     win,
+            --     win_width,
+            --     win_height,
+            --     tostring(is_vertical),
+            --     current_columns
+            --   ),
+            --   vim.log.levels.INFO
+            -- )
+
+            if is_vertical and win_width > (current_columns / 2) then
+                vim.api.nvim_win_close(win, true)
+            end
           end
         end
-      end
+      end, 110)
     end,
   })
 
