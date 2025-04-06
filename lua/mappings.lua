@@ -125,9 +125,7 @@ if vim.env.NVIM_MINIMAL == nil then
   vim.api.nvim_create_autocmd("VimResized", {
     pattern = "*",
     callback = function()
-      vim.cmd "wincmd ="
-
-      -- Close nvim tree to avoid weird effects.
+      -- Close nvim tree and vertical terminals to avoid weird effects.
       local ok, nvim_tree = pcall(require, "nvim-tree.api")
       if ok and nvim_tree.tree.is_visible() then
         vim.defer_fn(function()
@@ -165,12 +163,19 @@ if vim.env.NVIM_MINIMAL == nil then
           end
         end
       end, 110)
+
+      -- Equal resize windows
+      vim.cmd "wincmd ="
     end,
   })
 
-  -- Automatically trigger reisze of winodws when nvimtree is opened
+  -- Automatically trigger reisze of windows when nvimtree is opened
   local nvim_tree_events = require "nvim-tree.events"
   nvim_tree_events.subscribe(nvim_tree_events.Event.TreeOpen, function()
+
+    -- Toggle NoNeckPain off if there are more than 2 vertical buffers and terminal in total
+    -- TODO
+    
     vim.cmd "wincmd ="
   end)
 end
