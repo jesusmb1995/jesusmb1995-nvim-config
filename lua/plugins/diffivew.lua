@@ -4,5 +4,5 @@ return {
     return vim.env.NVIM_MINIMAL == nil
   end,
   version = "*",
-  cmd = "DiffViewOpen",
+  cmd = { "DiffviewOpen", "DiffviewOpen HEAD^" },
 }

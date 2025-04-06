@@ -6,9 +6,14 @@ return {
   version = "*",
   cmd = "NoNeckPain",
   config = function()
-    require("no-neck-pain").setup({
+    require("no-neck-pain").setup {
       width = 120,
-    })
+      autocmds = {
+        skipEnteringNoNeckPainBuffer = true,
+      },
+      integrations = { NvimTree = {
+        reopen = true,
+      } },
+    }
   end,
 }
-
