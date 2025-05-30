@@ -12,13 +12,12 @@ return {
       c = { "cpplint" },
       python = { "pylint" },
       yaml = { "yamllint" },
-      javascript = { "biomejs" },
+      javascript = { "biomejs", "standardjs" },
       bash = { "shellcheck" },
       zsh = { "shellcheck" },
+      -- TODO automatically generate .vale.ini or root project and vale sync styles
+      markdown = { "vale" },
+      dockerfile = { "hadolint" },
     }
-
-    vim.keymap.set("n", "<leader>l", function()
-      lint.try_lint()
-    end, { desc = "Trigger linting for current file" })
   end,
 }

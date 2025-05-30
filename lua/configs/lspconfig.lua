@@ -15,8 +15,9 @@ local servers = {
   "marksman",      -- Markdown
   "ts_ls",         -- Javascript and Typescript
   "cmake",
-  "taplo", -- Toml (Rust)
-  "bashls", -- Bash 
+  "taplo",         -- Toml (Rust)
+  "bashls",        -- Bash
+  "dockerls",
 
   -- Below to be installed by hand on :Mason. Go to line and do "i" key to install.
 
@@ -25,6 +26,7 @@ local servers = {
   --"pylint",
   --"yamllint",
   --"biomejs"
+  --"standardjs"
   --"shellcheck"
 
   -- formatters
