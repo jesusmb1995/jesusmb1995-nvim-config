@@ -40,6 +40,14 @@ local servers = {
 }
 local nvlsp = require "nvchad.configs.lspconfig"
 
+-- Add this before the for loop that sets up the servers
+lspconfig.jinja_lsp.setup {
+  on_attach = nvlsp.on_attach,
+  on_init = nvlsp.on_init,
+  capabilities = nvlsp.capabilities,
+  filetypes = { "jinja", "njk" }, -- Add support for .njk files
+}
+
 -- lsps with default config
 for _, lsp in ipairs(servers) do
   lspconfig[lsp].setup {

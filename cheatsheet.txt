@@ -1,0 +1,102 @@
+## Terminal 
+back search | <C-r>
+select entry and continue editing | <C-g>
+vim mode | <C-]>
+tmux visual mode | <C-b>[
+tmux search up (in visual mode) | ?
+tmux search down (in visual mode) | /
+tmux select mode (in visual mode) | space 
+tmux copy (in visual mode and select mode) | enter 
+rerun last command | r<enter>
+## Debugging
+coredumpctl list | list available core dumps
+coredumpctl debug <PID> | attach to specific core dump
+## Regolith
+Convert to floating window | <Win-shift-f>
+Convert to scratchpad | <Win-C-m>
+Move/show scratchpad | <Win-C-a>
+## Vim 
+Start recording macro | q[letter] 
+Stop recording macro | q
+Use macro | @[letter]
+Go previous cursor | <C-o>
+Record current file path to clipboard | :let @+ = expand('%:p')
+## Nv-chad
+Open floating terminal | <A-i>
+## Custom
+Jump to bookmark | :J [location]
+Open current buffer window in new tab | <leader>B" 
+Open new tab" | <leader>T"
+## Nvim-directory-tree
+CD into folder | <C-]>
+Expand directory | <C-E>
+Toggle Show Hidden | <H>
+Toggle Show Ignored | <I>
+Open with system (e.g. image or folder explorer) | s
+## No-neck-pain
+Center (with no neck pain) | <leader>np
+## Plugin-managers 
+Lazy plugin manager | :Lazy
+Mason LSP plugin manager | :Mason
+## Telescope
+Find files | <leader>ff
+Live grep | <leader>fg
+Search buffers | <leader>fb
+Help tags | <leader>fh
+Telescope builtin | :Telescope builtin 
+Telescope symbols (dynamic) | :Telescope lsp_dynamic_workspace_symbols 
+Telescope symbols (dynamic) | <leader>ts 
+Quick fix on results (e.g. live grep) | <C-q>
+Replace in quick fix | :cfdo %s/replace/by
+## LSP
+Go to definition | gd
+References | gr
+Diagnostic list (errors and warnings) | <leader>ds
+Hover | K
+Rename | <leader>rn
+Code actions | <leader>ca
+Format code | <leader>F
+Cycle formatter / Switch to different formatter | :CycleFormatter 
+Cycle linter / Switch to different linter | :CycleLinter
+Toggle diagnostic list | <leader>xx
+Toggle diagnostic | <leader>l
+Toggle symbols outline | <leader>s
+## DAP
+Toggle breakpoint | <leader>db
+Start/Continue | <leader>dc
+Run to cursor | <leader>dC
+Step over | <leader>do
+restart | <leader>dr
+Step into | <leader>di
+Step out | <leader>du
+Toggle UI | <leader>dd
+Stop debugging | <leadaer><sd>
+Step over | <F8>
+Step out | <F9>
+Step into | <F7>
+Start DAP debug environment python | <leader>Vs
+Start DAP debug environment C/C++ | <leader>Vc
+## Venv
+Select python venv | <leader>Vs
+Select python venv cached from directory | <leader>Vc
+## Git
+Open diffview against previous commit | <leader>gd
+Open diffview against previous commit | :DiffviewOpen HEAD^
+Activate git conflict plugin | :GitConflictRefresh
+Show git conflict list | :GitConflictListQf
+Activate git conflict plugin | <leader>gcr
+Show git conflict list | <leader>gcl
+Resolve conflict choosing current/ours | <leader>gco
+Resolve conflict choosing  incoming/theirs | <leader>gct
+Next git conflict | <leader>]x
+Previous  git conflict | <leader>[x
+Move commit to staging area | git reset --soft HEAD^
+Delete patch into staging area | stg delete --spill [patch]
+Move patch to staging area | stg pop [patch] --spill
+Stash staged changes (unstaged remains) | git stash --staged
+Stage all conflicts as resolved | git status --short | grep '^UU' | awk '{print $1}' | xargs git add
+## Aliases (.aliases)
+Stage all conflicts as resolved (alias) | git-resolve 
+Stage all conflicts as resolved and refresh (alias) | stg-resolve 
+## gitsigns
+Stage hunk (custom mmap)| <leader>Hs

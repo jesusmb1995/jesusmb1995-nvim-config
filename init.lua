@@ -2,6 +2,7 @@
 vim.cmd("set runtimepath^=~/.vim runtimepath+=~/.vim/after")
 vim.cmd("let &packpath=&runtimepath")
 vim.cmd("source ~/.vimrc")
+vim.cmd("source ~/.vimrc_prog_mapping")
 
 vim.g.base46_cache = vim.fn.stdpath "data" .. "/base46/"
 vim.g.mapleader = " "

@@ -1,6 +1,6 @@
 return {
   {
-    dir = "/home/jberlanga/Code/zsh-bookmark-jumper",
+    url = "https://github.com/jesusmb1995/ohmyzsh-bookmark-jumper",
     lazy = false, -- we want to be able to quicly jump from the get-go
     config = function()
       require('zsh-bookmark-jumper')

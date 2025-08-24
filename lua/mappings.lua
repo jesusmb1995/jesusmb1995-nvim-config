@@ -103,7 +103,14 @@ if vim.env.NVIM_MINIMAL == nil then
     vim.notify("Opening file in CLion...", vim.log.levels.INFO)
   end, {})
 
-  vim.keymap.set("n", "<A-S-c>", ":DiffviewOpen HEAD^<CR>", { desc = "Open diffview against previous commit" })
+  vim.keymap.set("n", "<leader>gd", ":DiffviewOpen HEAD^<CR>", { desc = "Open diffview against previous commit" })
+
+  vim.keymap.set("n", "<leader>gcr", ":GitConflictRefresh<CR>",  { desc = "Activate git conflict plugin" } )
+  vim.keymap.set("n", "<leader>gcl", ":GitConflictListQf<CR>",  { desc = "Show git conflict list" } )
+  vim.keymap.set("n", "<leader>gco", ":GitConflictChooseOurs<CR>",  { desc = "Resolve conflict choosing current/ours" } )
+  vim.keymap.set("n", "<leader>gcb", ":GitConflictChooseBoth<CR>",  { desc = "Resolve conflict choosing both" } )
+  vim.keymap.set("n", "<leader>gcn", ":GitConflictChooseNone<CR>",  { desc = "Resolve conflict choosing none" } )
+  vim.keymap.set("n", "<leader>gct", ":GitConflictChooseTheirs<CR>",  { desc = "Resolve conflict choosing  incoming/theirs" } )
 
   -- Optionally, create a keybinding for the command
   vim.keymap.set("n", "<leader>ic", ":Intellij<CR>", { noremap = true, silent = true, desc = "Open in CLion" })
