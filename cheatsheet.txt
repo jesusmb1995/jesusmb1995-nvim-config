@@ -21,6 +21,8 @@ Stop recording macro | q
 Use macro | @[letter]
 Go previous cursor | <C-o>
 Record current file path to clipboard | :let @+ = expand('%:p')
+Write all changed buffers | :wa
+Delete all.within.same.block | dW
 ## Nv-chad
 Open floating terminal | <A-i>
 ## Custom
@@ -59,7 +61,7 @@ Format code | <leader>F
 Cycle formatter / Switch to different formatter | :CycleFormatter 
 Cycle linter / Switch to different linter | :CycleLinter
 Toggle diagnostic list | <leader>xx
-Toggle diagnostic | <leader>l
+Toggle diagnostic (linter) | <leader>l
 Toggle symbols outline | <leader>s
 ## DAP
 Toggle breakpoint | <leader>db

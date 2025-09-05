@@ -13,6 +13,7 @@ return {
       python = { "pylint" },
       yaml = { "yamllint" },
       javascript = { "biomejs", "standardjs" },
+      typescript = { "biomejs" },
       bash = { "shellcheck" },
       zsh = { "shellcheck" },
       -- TODO automatically generate .vale.ini or root project and vale sync styles

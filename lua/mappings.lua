@@ -16,6 +16,12 @@ if vim.env.NVIM_MINIMAL == nil then
     "<cmd> Telescope lsp_dynamic_workspace_symbols <CR>",
     { desc = "Telescope workspace symbols" }
   )
+  map(
+    { "n" },
+    "<leader>fF",
+    "<cmd> Telescope find_files hidden=true<CR>",
+    { desc = "Find files including hidden" }
+  )
   map({ "n" }, "<leader>tS", "<cmd> Telescope lsp_workspace_symbols <CR>", { desc = "Telescope workspace symbols" })
 
   -- The other mappings are as default
@@ -33,11 +39,33 @@ if vim.env.NVIM_MINIMAL == nil then
   -- Git shortcuts
   map("n", "<leader>gg", ":Neogit<CR>", { desc = "Git Tab" })
   map("n", "<leader>gb", ":Neogit branch<CR>", { desc = "Git Branch" })
+  map("n", "<leader>gB", ":Gitsigns blame<CR>", { desc = "Git Blame" })
   map("n", "<leader>gl", ":Neogit log<CR>", { desc = "Git Log" })
   map("n", "<leader>gz", ":Neogit stash<CR>", { desc = "Git Stash" })
+  map("n", "<leader>gp", ":Neogit pull<CR>", { desc = "Git pull" })
   map("n", "<leader>gP", ":Neogit push<CR>", { desc = "Git Push" })
   map("n", "<leader>gr", ":Neogit rebase<CR>", { desc = "Git Rebase" })
   map("n", "<leader>gf", ":Neogit fetch<CR>", { desc = "Git Fetch" })
+  map("n", "<leader>gwg", function()
+    local git = require("neogit.lib.git")
+    local worktrees = git.worktree.list()
+    if not worktrees or #worktrees == 0 then
+      vim.notify("No git worktrees found", vim.log.levels.WARN)
+      return
+    end
+
+    local entries = {}
+    for _, wt in ipairs(worktrees) do
+      table.insert(entries, wt.path)
+    end
+
+    vim.ui.select(entries, { prompt = "Select git worktree to cd:" }, function(choice)
+      if choice then
+        vim.cmd("cd " .. vim.fn.fnameescape(choice))
+        vim.notify("Changed directory to: " .. choice, vim.log.levels.INFO)
+      end
+    end)
+  end, { desc = "Select and cd to Git Worktree" })
 
   map("n", "<leader>X", ":tabclose | bdelete<CR>", { desc = "Close current tab and its buffers" })
 
@@ -106,6 +134,7 @@ if vim.env.NVIM_MINIMAL == nil then
   vim.keymap.set("n", "<leader>gd", ":DiffviewOpen HEAD^<CR>", { desc = "Open diffview against previous commit" })
 
   vim.keymap.set("n", "<leader>gcr", ":GitConflictRefresh<CR>",  { desc = "Activate git conflict plugin" } )
+  vim.keymap.set("n", "<leader>gcl", ":GitConflictListQf<CR>",  { desc = "Show git conflict list" } )
   vim.keymap.set("n", "<leader>gcl", ":GitConflictListQf<CR>",  { desc = "Show git conflict list" } )
   vim.keymap.set("n", "<leader>gco", ":GitConflictChooseOurs<CR>",  { desc = "Resolve conflict choosing current/ours" } )
   vim.keymap.set("n", "<leader>gcb", ":GitConflictChooseBoth<CR>",  { desc = "Resolve conflict choosing both" } )

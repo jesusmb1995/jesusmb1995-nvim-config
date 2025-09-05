@@ -22,6 +22,15 @@ return {
       desc = "Toggle breakpoint",
     },
     {
+      "<leader>dB", 
+      function()
+        vim.ui.input({ prompt = "Breakpoint condition: " }, function(condition)
+          require("dap").toggle_breakpoint(condition)
+        end)
+      end,
+      desc = "Toggle conditional breakpoint",
+    },
+    {
       "<leader>ds",
       function()
         require("dap").terminate()

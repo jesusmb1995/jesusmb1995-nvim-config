@@ -13,28 +13,28 @@ local function get_config()
       -- add any opts here
       -- for example
       provider = "openai",
-      openai = { -- Kobalt api proxy
-        endpoint = "http://127.0.0.1:8001/v1",
-        model = "Qwen2.5-Coder-32B-Instruct",
-        disable_tools = true,
-        max_tokens = 4096,
-        timeout = 300,
-      },
+      -- openai = { -- Kobalt api proxy
+      --   endpoint = "http://127.0.0.1:8001/v1",
+      --   model = "Qwen2.5-Coder-32B-Instruct",
+      --   disable_tools = true,
+      --   max_tokens = 4096,
+      --   timeout = 300,
+      -- },
     }
   end
   return {
     -- add any opts here
     -- for example
     provider = "openrouter",
-    openai = {
-      endpoint = "https://api.openai.com/v1",
-      model = "gpt-4o", -- your desired model (or use gpt-4o, etc.)
-      timeout = 30000, -- Timeout in milliseconds, increase this for reasoning models
-      temperature = 0,
-      max_completion_tokens = 8192, -- Increase this to include reasoning tokens (for reasoning models)
-      --reasoning_effort = "medium", -- low|medium|high, only used for reasoning models
-      disable_tools = true, -- R1 needs it disabled
-    },
+    -- openai = {
+    --   endpoint = "https://api.openai.com/v1",
+    --   model = "gpt-4o", -- your desired model (or use gpt-4o, etc.)
+    --   timeout = 30000, -- Timeout in milliseconds, increase this for reasoning models
+    --   temperature = 0,
+    --   max_completion_tokens = 8192, -- Increase this to include reasoning tokens (for reasoning models)
+    --   --reasoning_effort = "medium", -- low|medium|high, only used for reasoning models
+    --   disable_tools = true, -- R1 needs it disabled
+    -- },
     vendors = {
       -- use <leader> a? to change model
       -- Best free model for now is R1 for coding: https://openrouter.ai/rankings/programming?view=month
