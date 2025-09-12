@@ -22,9 +22,14 @@ M.base46 = {
 --}
 
 -- TODO override config
--- if vim.env.NVIM_MINIMAL == nil then
---   -- Relative line numbers on file tree by default
---   require('nvim-tree').setup({view = {relativenumber = true}})
--- end
+if vim.env.NVIM_MINIMAL == nil then
+  -- Relative line numbers on file tree by default
+  require('nvim-tree').setup({
+    view = {relativenumber = true},
+    update_focused_file = {
+      enable = true,
+    }
+  })
+end
 
 return M
