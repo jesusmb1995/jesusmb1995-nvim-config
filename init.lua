@@ -1,6 +1,7 @@
 -- Share vim config with neovim
 vim.cmd("set runtimepath^=~/.vim runtimepath+=~/.vim/after")
 vim.cmd("let &packpath=&runtimepath")
+-- TODO check if files exists first...
 vim.cmd("source ~/.vimrc")
 vim.cmd("source ~/.vimrc_prog_mapping")
 

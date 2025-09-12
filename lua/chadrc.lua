@@ -28,7 +28,8 @@ if vim.env.NVIM_MINIMAL == nil then
     view = {relativenumber = true},
     update_focused_file = {
       enable = true,
-    }
+    },
+    update_cwd = true
   })
 end
 
