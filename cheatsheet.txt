@@ -25,6 +25,8 @@ Write all changed buffers | :wa
 Delete all.within.same.block | dW
 ## Nv-chad
 Open floating terminal | <A-i>
+Collapse all (Tree, symbols, etc.) | W
+Expand all (Tree, symbols, etc.) | E  
 ## Custom
 Jump to bookmark | :J [location]
 Open current buffer window in new tab | <leader>B" 
