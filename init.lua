@@ -1,9 +1,15 @@
 -- Share vim config with neovim
 vim.cmd("set runtimepath^=~/.vim runtimepath+=~/.vim/after")
 vim.cmd("let &packpath=&runtimepath")
--- TODO check if files exists first...
-vim.cmd("source ~/.vimrc")
-vim.cmd("source ~/.vimrc_prog_mapping")
+
+local function source_if_exists(file)
+  if vim.fn.filereadable(vim.fn.expand(file)) == 1 then
+    vim.cmd("source " .. file)
+  end
+end
+
+source_if_exists("~/.vimrc")
+source_if_exists("~/.vimrc_prog_mapping")
 
 vim.g.base46_cache = vim.fn.stdpath "data" .. "/base46/"
 vim.g.mapleader = " "
