@@ -7,6 +7,8 @@ tmux search up (in visual mode) | ?
 tmux search down (in visual mode) | /
 tmux select mode (in visual mode) | space 
 tmux copy (in visual mode and select mode) | enter 
+tmux split vertical | <C-b>%
+tmux jump split | <C-b>o
 rerun last command | r<enter>
 ## Debugging
 coredumpctl list | list available core dumps
@@ -15,6 +17,9 @@ coredumpctl debug <PID> | attach to specific core dump
 Convert to floating window | <Win-shift-f>
 Convert to scratchpad | <Win-C-m>
 Move/show scratchpad | <Win-C-a>
+Hide bar | <Win-i>
+Force quit window  | <Win-Alt-a>
+Close window | <Win-Q>
 ## Vim 
 Start recording macro | q[letter] 
 Stop recording macro | q
@@ -85,6 +90,7 @@ Select python venv | <leader>Vs
 Select python venv cached from directory | <leader>Vc
 ## Git
 Open diffview against previous commit | <leader>gd
+Open diffview against main branch | <leader>gD
 Open diffview against previous commit | :DiffviewOpen HEAD^
 Activate git conflict plugin | :GitConflictRefresh
 Show git conflict list | :GitConflictListQf
