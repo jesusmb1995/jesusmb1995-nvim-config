@@ -75,7 +75,36 @@ if vim.env.NVIM_MINIMAL == nil then
     return paths
   end
 
-  -- Helper function: select and cd to git worktree (used by gwg and after gwc)
+  -- Helper: relative path from git root to cwd (e.g. "src/components"), or "" if at root
+  local function worktree_relative_subpath()
+    local root = git_root()
+    if not root then return "" end
+    local root_norm = vim.fn.fnamemodify(root, ":p"):gsub("/$", "")
+    local cwd_norm = vim.fn.fnamemodify(vim.fn.getcwd(), ":p"):gsub("/$", "")
+    if cwd_norm == root_norm then
+      return ""
+    end
+    if cwd_norm:sub(1, #root_norm + 1) == root_norm .. "/" then
+      return cwd_norm:sub(#root_norm + 2)
+    end
+    return ""
+  end
+
+  -- Helper: choose target dir (worktree root or same relative subfolder if it exists)
+  local function worktree_cd_target(worktree_dir)
+    local target = worktree_dir
+    local rel = worktree_relative_subpath()
+    if #rel > 0 then
+      local subpath = vim.fn.fnamemodify(worktree_dir, ":p"):gsub("/$", "") .. "/" .. rel
+      if vim.fn.isdirectory(subpath) == 1 then
+        target = subpath
+      end
+    end
+    return target
+  end
+
+  -- Helper function: select and cd to git worktree (used by gwg and after gwc).
+  -- Jumps to the same relative subfolder in the selected worktree if it exists.
   local function select_and_cd_worktree()
     local worktrees = git_worktree_list()
     if not worktrees or #worktrees == 0 then
@@ -84,10 +113,10 @@ if vim.env.NVIM_MINIMAL == nil then
     end
 
     vim.ui.select(worktrees, { prompt = "Select git worktree to cd:" }, function(choice)
-      if choice then
-        vim.cmd("cd " .. vim.fn.fnameescape(choice))
-        vim.notify("Changed directory to: " .. choice, vim.log.levels.INFO)
-      end
+      if not choice then return end
+      local target = worktree_cd_target(choice)
+      vim.cmd("cd " .. vim.fn.fnameescape(target))
+      vim.notify("Changed directory to: " .. target, vim.log.levels.INFO)
     end)
   end
 
@@ -131,8 +160,9 @@ if vim.env.NVIM_MINIMAL == nil then
             for _, wt_path in ipairs(all_wts or {}) do
               if vim.fn.fnamemodify(wt_path, ":p") == vim.fn.fnamemodify(worktree_dir, ":p") then
                 notify("Worktree already exists for branch at: " .. worktree_dir, vim.log.levels.INFO)
-                vim.cmd("cd " .. vim.fn.fnameescape(worktree_dir))
-                notify("Changed directory to: " .. worktree_dir, vim.log.levels.INFO)
+                local target = worktree_cd_target(worktree_dir)
+                vim.cmd("cd " .. vim.fn.fnameescape(target))
+                notify("Changed directory to: " .. target, vim.log.levels.INFO)
                 return
               end
             end
@@ -145,9 +175,9 @@ if vim.env.NVIM_MINIMAL == nil then
                 vim.schedule(function()
                   if return_val == 0 then
                     notify("Worktree created: " .. worktree_dir, vim.log.levels.INFO)
-                    -- After creating, jump to it
-                    vim.cmd("cd " .. vim.fn.fnameescape(worktree_dir))
-                    notify("Changed directory to: " .. worktree_dir, vim.log.levels.INFO)
+                    local target = worktree_cd_target(worktree_dir)
+                    vim.cmd("cd " .. vim.fn.fnameescape(target))
+                    notify("Changed directory to: " .. target, vim.log.levels.INFO)
                   else
                     notify("Error creating worktree: " .. table.concat(j2:stderr_result(), " "), vim.log.levels.ERROR)
                   end
