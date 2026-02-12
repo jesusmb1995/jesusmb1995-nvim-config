@@ -46,26 +46,119 @@ if vim.env.NVIM_MINIMAL == nil then
   map("n", "<leader>gP", ":Neogit push<CR>", { desc = "Git Push" })
   map("n", "<leader>gr", ":Neogit rebase<CR>", { desc = "Git Rebase" })
   map("n", "<leader>gf", ":Neogit fetch<CR>", { desc = "Git Fetch" })
-  map("n", "<leader>gwg", function()
-    local git = require("neogit.lib.git")
-    local worktrees = git.worktree.list()
+   -- Helper: get git root (uses git CLI, no neogit internal API)
+  local function git_root()
+    local result = vim.fn.systemlist("git rev-parse --show-toplevel 2>/dev/null")
+    if vim.v.shell_error ~= 0 or not result or #result == 0 then
+      return nil
+    end
+    return vim.trim(result[1])
+  end
+
+  -- Helper: list git worktree paths (uses git CLI)
+  local function git_worktree_list()
+    local Job = require("plenary.job")
+    local cwd = git_root() or vim.fn.getcwd()
+    local job = Job:new({
+      command = "git",
+      args = { "worktree", "list", "--porcelain" },
+      cwd = cwd,
+    })
+    job:sync()
+    local paths = {}
+    for _, line in ipairs(job:result()) do
+      local path = line:match("^worktree%s+(.+)$")
+      if path and #path > 0 then
+        table.insert(paths, vim.trim(path))
+      end
+    end
+    return paths
+  end
+
+  -- Helper function: select and cd to git worktree (used by gwg and after gwc)
+  local function select_and_cd_worktree()
+    local worktrees = git_worktree_list()
     if not worktrees or #worktrees == 0 then
       vim.notify("No git worktrees found", vim.log.levels.WARN)
       return
     end
 
-    local entries = {}
-    for _, wt in ipairs(worktrees) do
-      table.insert(entries, wt.path)
-    end
-
-    vim.ui.select(entries, { prompt = "Select git worktree to cd:" }, function(choice)
+    vim.ui.select(worktrees, { prompt = "Select git worktree to cd:" }, function(choice)
       if choice then
         vim.cmd("cd " .. vim.fn.fnameescape(choice))
         vim.notify("Changed directory to: " .. choice, vim.log.levels.INFO)
       end
     end)
-  end, { desc = "Select and cd to Git Worktree" })
+  end
+
+  -- <leader>gwg: Select and cd to Git worktree
+  map("n", "<leader>gwg", select_and_cd_worktree, { desc = "Select and cd to Git Worktree" })
+
+  -- <leader>gwc: Create worktree for <branch> in ../<repo-name>-<branch> if not exist, then cd to it
+  map("n", "<leader>gwc", function()
+    local Job = require("plenary.job")
+    local notify = vim.notify
+
+    local root = git_root()
+    if not root then
+      notify("Not inside a Git repository", vim.log.levels.ERROR)
+      return
+    end
+    local repo_name = vim.fn.fnamemodify(root, ":t")
+
+    local branches = {}
+    Job:new({
+      command = "git",
+      args = {"branch", "--format=%(refname:short)"},
+      cwd = root,
+      on_exit = function(j)
+        vim.schedule(function()
+          local results = j:result()
+          for _, branch in ipairs(results) do
+            local b = vim.trim(branch)
+            if #b > 0 then
+              table.insert(branches, b)
+            end
+          end
+
+          vim.ui.select(branches, { prompt = "Select branch to create worktree:" }, function(branch_name)
+            if not branch_name then return end
+
+            local parent_dir = vim.fn.fnamemodify(root, ":h")
+            local worktree_dir = parent_dir .. "/" .. repo_name .. "-" .. branch_name
+
+            local all_wts = git_worktree_list()
+            for _, wt_path in ipairs(all_wts or {}) do
+              if vim.fn.fnamemodify(wt_path, ":p") == vim.fn.fnamemodify(worktree_dir, ":p") then
+                notify("Worktree already exists for branch at: " .. worktree_dir, vim.log.levels.INFO)
+                vim.cmd("cd " .. vim.fn.fnameescape(worktree_dir))
+                notify("Changed directory to: " .. worktree_dir, vim.log.levels.INFO)
+                return
+              end
+            end
+
+            Job:new({
+              command = "git",
+              args = {"worktree", "add", worktree_dir, branch_name},
+              cwd = root,
+              on_exit = function(j2, return_val)
+                vim.schedule(function()
+                  if return_val == 0 then
+                    notify("Worktree created: " .. worktree_dir, vim.log.levels.INFO)
+                    -- After creating, jump to it
+                    vim.cmd("cd " .. vim.fn.fnameescape(worktree_dir))
+                    notify("Changed directory to: " .. worktree_dir, vim.log.levels.INFO)
+                  else
+                    notify("Error creating worktree: " .. table.concat(j2:stderr_result(), " "), vim.log.levels.ERROR)
+                  end
+                end)
+              end,
+            }):start()
+          end)
+        end)
+      end,
+    }):start()
+  end, { desc = "Create worktree for selected branch in ../<repo-name>-<branchname> and cd to it" })
 
   map("n", "<leader>X", ":tabclose | bdelete<CR>", { desc = "Close current tab and its buffers" })
 
