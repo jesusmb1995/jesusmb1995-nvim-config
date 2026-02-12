@@ -132,7 +132,7 @@ if vim.env.NVIM_MINIMAL == nil then
   end, {})
 
   vim.keymap.set("n", "<leader>gd", ":DiffviewOpen HEAD^<CR>", { desc = "Open diffview against previous commit" })
-  vim.keymap.set("n", "<leader>gD", ":DiffviewOpen main<CR>", { desc = "Open diffview against main branch" })
+  vim.keymap.set("n", "<leader>gD", ":DiffviewOpen upstream/main<CR>", { desc = "Open diffview against main branch" })
 
   vim.keymap.set("n", "<leader>gcr", ":GitConflictRefresh<CR>",  { desc = "Activate git conflict plugin" } )
   vim.keymap.set("n", "<leader>gcl", ":GitConflictListQf<CR>",  { desc = "Show git conflict list" } )
