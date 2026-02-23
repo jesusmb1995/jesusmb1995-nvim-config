@@ -123,6 +123,44 @@ if vim.env.NVIM_MINIMAL == nil then
   -- <leader>gwg: Select and cd to Git worktree
   map("n", "<leader>gwg", select_and_cd_worktree, { desc = "Select and cd to Git Worktree" })
 
+  -- <leader>gbs: Git branch spin-off with default name when under packages/<package>
+  map("n", "<leader>gbs", function()
+    local root = git_root()
+    if not root then
+      vim.notify("Not inside a Git repository", vim.log.levels.ERROR)
+      return
+    end
+    local root_norm = vim.fn.fnamemodify(root, ":p"):gsub("/$", "")
+    local rel = worktree_relative_subpath()
+    local buf_path = vim.api.nvim_buf_get_name(0)
+    if buf_path and buf_path ~= "" then
+      local full = vim.fn.fnamemodify(buf_path, ":p"):gsub("/$", "")
+      if full:sub(1, #root_norm + 1) == root_norm .. "/" then
+        rel = full:sub(#root_norm + 2)
+      end
+    end
+    local pkg = rel and rel:match("^packages/([^/]+)") or nil
+    local default = "feature-qvac-lib-inference-" .. (pkg or "")
+    vim.ui.input({
+      prompt = "Branch name (spin-off): ",
+      default = default,
+    }, function(name)
+      if not name or name == "" then return end
+      local Job = require("plenary.job")
+      local job = Job:new({
+        command = "git",
+        args = { "checkout", "-b", name },
+        cwd = root,
+      })
+      job:sync()
+      if job.code == 0 then
+        vim.notify("Created and checked out branch " .. name, vim.log.levels.INFO)
+      else
+        vim.notify("Git: " .. table.concat(job:stderr_result(), " "), vim.log.levels.ERROR)
+      end
+    end)
+  end, { desc = "Git branch spin-off (default name from packages/<package>)" })
+
   -- <leader>gwc: Create worktree for <branch> in ../<repo-name>-<branch> if not exist, then cd to it
   map("n", "<leader>gwc", function()
     local Job = require("plenary.job")
