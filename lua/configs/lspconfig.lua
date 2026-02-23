@@ -1,8 +1,6 @@
 -- load defaults i.e lua_lsp
 require("nvchad.configs.lspconfig").defaults()
 
-local lspconfig = require "lspconfig"
-
 -- EXAMPLE
 local servers = {
   "html",
@@ -40,21 +38,23 @@ local servers = {
 }
 local nvlsp = require "nvchad.configs.lspconfig"
 
--- Add this before the for loop that sets up the servers
-lspconfig.jinja_lsp.setup {
-  on_attach = nvlsp.on_attach,
-  on_init = nvlsp.on_init,
-  capabilities = nvlsp.capabilities,
-  filetypes = { "jinja", "njk" }, -- Add support for .njk files
-}
-
--- lsps with default config
-for _, lsp in ipairs(servers) do
-  lspconfig[lsp].setup {
+local function with_defaults(opts)
+  return vim.tbl_deep_extend("force", {
     on_attach = nvlsp.on_attach,
     on_init = nvlsp.on_init,
     capabilities = nvlsp.capabilities,
-  }
+  }, opts or {})
+end
+
+-- Use vim.lsp.config (Neovim 0.11+). Do not require("lspconfig") to avoid deprecation.
+vim.lsp.config("jinja_lsp", with_defaults {
+  filetypes = { "jinja", "njk" }, -- Add support for .njk files
+})
+vim.lsp.enable "jinja_lsp"
+
+for _, lsp in ipairs(servers) do
+  vim.lsp.config(lsp, with_defaults())
+  vim.lsp.enable(lsp)
 end
 
 -- configuring single server, example: typescript
