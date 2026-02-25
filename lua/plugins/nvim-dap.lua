@@ -1,3 +1,5 @@
+local last_dap_config = nil
+
 return {
   "mfussenegger/nvim-dap.nvim",
   url = "https://github.com/mfussenegger/nvim-dap",
@@ -54,7 +56,30 @@ return {
     {
       "<leader>dc",
       function()
-        require("dap").continue()
+        local dap = require("dap")
+        -- If a session is already running, just continue
+        if dap.session() then
+          dap.continue()
+          return
+        end
+        -- Offer "Reuse last config" in dropdown when we have one
+        if last_dap_config and next(last_dap_config) then
+          local name = last_dap_config.name or "unnamed"
+          vim.ui.select(
+            { "Reuse last config (" .. name .. ")", "Choose configuration..." },
+            { prompt = "Debug: " },
+            function(choice)
+              if not choice then return end
+              if choice:match("^Reuse last") then
+                dap.run(vim.deepcopy(last_dap_config))
+              else
+                dap.continue({ new = true })
+              end
+            end
+          )
+        else
+          dap.continue()
+        end
       end,
       desc = "Start/Continue",
     },
@@ -110,5 +135,11 @@ return {
   },
   config = function()
     require("dapui").setup()
-  end
+    local dap = require("dap")
+    dap.listeners.after.event_initialized["dap_save_last_config"] = function(session)
+      if session and session.config then
+        last_dap_config = vim.deepcopy(session.config)
+      end
+    end
+  end,
 }
