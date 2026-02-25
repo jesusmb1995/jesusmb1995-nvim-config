@@ -110,3 +110,9 @@ Stage all conflicts as resolved (alias) | git-resolve
 Stage all conflicts as resolved and refresh (alias) | stg-resolve 
 ## gitsigns
 Stage hunk (custom mmap)| <leader>Hs
+## Cursor AI editor
+Next review | <Alt-l>
+Accept review | <Ctrl-y>
+Chat window | <Ctrl-l>
+Accept perm command | cursor-agent 
+Cursor terminal cli | cursor-cli
