@@ -134,3 +134,6 @@ Accept review | <Ctrl-y>
 Chat window | <Ctrl-l> (or simply ctrl -> with vim bindings extension)
 Accept perm command | cursor-agent 
 Cursor terminal cli | cursor-cli
+## Cursor agent terminal inside neovim 
+Toggle agent terminal | <C-l>
+Clear agent terminal output | <C-n><carriage return>

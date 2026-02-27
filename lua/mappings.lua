@@ -593,6 +593,17 @@ if vim.env.NVIM_MINIMAL == nil then
     vim.fn.system(system_command)
   end, { desc = "Open folder and file in VS Code, start new chat" })
 
+  map({ "n", "t" }, "<C-l>", function()
+    require("nvchad.term").toggle { pos = "vsp", cmd = "agent", id = "agentTerm" }
+  end, { desc = "Toggle agent terminal on the right" })
+
+  map("t", "<C-n>", function()
+    local chan = vim.b.terminal_job_id
+    if chan then
+      vim.fn.chansend(chan, "/clear")
+    end
+  end, { desc = "Clear agent conversation (new chat)" })
+
   map("n", "<F4>", ":%bd|e#<CR>", { desc = "Close all buffers except current" })
 
   -- TODO shorcut close all windows except :only the editor ones
