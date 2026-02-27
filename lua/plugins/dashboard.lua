@@ -147,6 +147,72 @@ return {
       return reversed
     end
 
+    local jump_limit = 6
+    local default_recent_limit = 6
+
+    local function get_display_projects()
+      local j_bookmarks = load_j_bookmarks()
+      local dashboard_cache = vim.fn.stdpath('cache') .. '/dashboard/cache'
+      local dashboard_projects = read_dashboard_projects(dashboard_cache)
+      return combine_projects_for_display(dashboard_projects, j_bookmarks, jump_limit, default_recent_limit)
+    end
+
+    local function get_full_projects_for_picker()
+      local j_bookmarks = load_j_bookmarks()
+      local dashboard_cache = vim.fn.stdpath('cache') .. '/dashboard/cache'
+      local dashboard_projects = read_dashboard_projects(dashboard_cache)
+      return combine_projects_for_display(
+        dashboard_projects,
+        j_bookmarks,
+        #j_bookmarks,
+        #dashboard_projects
+      )
+    end
+
+    local function open_project_jump_picker()
+      local ok_pickers, pickers = pcall(require, 'telescope.pickers')
+      local ok_finders, finders = pcall(require, 'telescope.finders')
+      local ok_conf, conf = pcall(require, 'telescope.config')
+      local ok_actions, actions = pcall(require, 'telescope.actions')
+      local ok_state, action_state = pcall(require, 'telescope.actions.state')
+      if not (ok_pickers and ok_finders and ok_conf and ok_actions and ok_state) then
+        vim.notify('Telescope is not available', vim.log.levels.WARN)
+        return
+      end
+
+      local projects = get_full_projects_for_picker()
+      if #projects == 0 then
+        vim.notify('No jump/recent projects found', vim.log.levels.INFO)
+        return
+      end
+
+      pickers.new({}, {
+        prompt_title = 'Jump + Recent Projects',
+        finder = finders.new_table {
+          results = projects,
+          entry_maker = function(path)
+            local display = vim.fn.fnamemodify(path, ':~')
+            return {
+              value = path,
+              display = display,
+              ordinal = display,
+            }
+          end,
+        },
+        sorter = conf.values.generic_sorter({}),
+        attach_mappings = function(prompt_bufnr)
+          actions.select_default:replace(function()
+            local selection = action_state.get_selected_entry()
+            actions.close(prompt_bufnr)
+            if selection and selection.value then
+              cd_and_open_recent_file(selection.value)
+            end
+          end)
+          return true
+        end,
+      }):find()
+    end
+
     local function split_leaf_and_parent(path)
       local normalized = vim.fs.normalize(path)
       local leaf = vim.fn.fnamemodify(normalized, ':t')
@@ -277,12 +343,8 @@ return {
       vim.fn.writefile(vim.split(source, '\n'), cache_path)
     end
 
-    local jump_limit = 6
-    local default_recent_limit = 6
-    local j_bookmarks = load_j_bookmarks()
     local dashboard_cache = vim.fn.stdpath('cache') .. '/dashboard/cache'
-    local dashboard_projects = read_dashboard_projects(dashboard_cache)
-    local display_projects = combine_projects_for_display(dashboard_projects, j_bookmarks, jump_limit, default_recent_limit)
+    local display_projects = get_display_projects()
     if #display_projects > 0 then
       write_dashboard_projects(dashboard_cache, reverse_copy(display_projects))
     end
@@ -301,6 +363,13 @@ return {
         group = 'DiagnosticError',
         action = 'qa',
         key = 'q',
+      },
+      {
+        icon = ' ',
+        desc = ' Jump Projects',
+        group = 'DiagnosticInfo',
+        action = open_project_jump_picker,
+        key = 'p',
       },
     }
 
@@ -323,6 +392,9 @@ return {
 
     require('dashboard').setup {
       theme = 'hyper',
+      shortcut_type = 'letter',
+      shuffle_letter = false,
+      letter_list = 'asdfqwertyuiopzxcvbnmghjkl',
       config = {
         shortcuts_left_side = true,
         header = fire_headers[math.random(#fire_headers)],
