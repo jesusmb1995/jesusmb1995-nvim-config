@@ -30,6 +30,8 @@ Write all changed buffers | :wa
 Delete all.within.same.block | dW
 Insert into next group (e.g. () {} []) | ci<group>
 Buffer undo history | :UndoTreeToggle
+standalone vim temporary bookmark set | m<letter>
+jump to vim bookmark | '<letter>
 ## Nv-chad
 Open floating terminal | <A-i>
 Collapse all (Tree, symbols, etc.) | W
@@ -53,13 +55,14 @@ Mason LSP plugin manager | :Mason
 ## Telescope
 Find files | <leader>ff
 Live grep | <leader>fg
-Search buffers | <leader>fb
+Search/Find buffers | <leader>fb
 Help tags | <leader>fh
 Telescope builtin | :Telescope builtin 
 Telescope symbols (dynamic) | :Telescope lsp_dynamic_workspace_symbols 
 Telescope symbols (dynamic) | <leader>ts 
 Quick fix on results (e.g. live grep) | <C-q>
 Replace in quick fix | :cfdo %s/replace/by
+Find marks | <leader>ma
 ## LSP
 Go to definition | gd
 References | gr
