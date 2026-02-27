@@ -147,6 +147,129 @@ return {
       return reversed
     end
 
+    local function split_leaf_and_parent(path)
+      local normalized = vim.fs.normalize(path)
+      local leaf = vim.fn.fnamemodify(normalized, ':t')
+      local parent = vim.fn.fnamemodify(normalized, ':h')
+      if parent == '.' or parent == '' then
+        parent = normalized
+      end
+      parent = vim.fn.fnamemodify(parent, ':~')
+      return leaf, parent
+    end
+
+    local function compact_path_middle(path, max_len)
+      if #path <= max_len then
+        return path
+      end
+      local keep_left = math.max(8, math.floor((max_len - 3) * 0.6))
+      local keep_right = math.max(8, max_len - 3 - keep_left)
+      return path:sub(1, keep_left) .. '...' .. path:sub(-keep_right)
+    end
+
+    local function restyle_dashboard_entries(bufnr)
+      local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+      local extmarks = {}
+      local row_targets = {}
+      local section = nil
+
+      for idx, line in ipairs(lines) do
+        if line:find('Recent Projects:') then
+          section = 'project'
+        elseif line:find('Recent Files:') then
+          section = 'mru'
+        elseif line:match('^%s*$') then
+          section = nil
+        elseif section and (line:find('~[/\\]') or line:find('%s/')) then
+          local path_start = line:find('[~/]')
+          if path_start then
+            local raw_path = line:sub(path_start):gsub('%s+$', '')
+            raw_path = raw_path:gsub('%s+$', '')
+            local expanded = vim.fn.expand(raw_path)
+            local leaf, parent = split_leaf_and_parent(raw_path)
+            local left_prefix = line:sub(1, path_start - 1)
+            local left_width = vim.api.nvim_strwidth(left_prefix)
+            table.insert(extmarks, {
+              row = idx - 1,
+              parent = parent,
+              leaf = leaf,
+              left_width = left_width,
+              path_col = path_start - 1,
+            })
+            row_targets[idx - 1] = {
+              path = expanded,
+              is_project = section == 'project',
+            }
+          end
+        end
+      end
+
+      local path_ns = vim.api.nvim_create_namespace('dashboard-custom-paths')
+      local leaf_ns = vim.api.nvim_create_namespace('dashboard-custom-leaf')
+      vim.api.nvim_buf_clear_namespace(bufnr, path_ns, 0, -1)
+      vim.api.nvim_buf_clear_namespace(bufnr, leaf_ns, 0, -1)
+
+      local function open_target(target)
+        if not target or not target.path or target.path == '' then
+          return
+        end
+        if target.is_project and vim.fn.isdirectory(target.path) == 1 then
+          cd_and_open_recent_file(target.path)
+          return
+        end
+        if vim.fn.filereadable(target.path) == 1 then
+          vim.cmd('edit ' .. vim.fn.fnameescape(target.path))
+        end
+      end
+
+      local dashboard_ns = vim.api.nvim_create_namespace('dashboard')
+      local marks = vim.api.nvim_buf_get_extmarks(bufnr, dashboard_ns, 0, -1, { details = true })
+      for _, mark in ipairs(marks) do
+        local row = mark[2]
+        local details = mark[4] or {}
+        local virt = details.virt_text
+        local target = row_targets[row]
+        if target and type(virt) == 'table' and type(virt[1]) == 'table' then
+          local key = tostring(virt[1][1] or '')
+          if key:match('^%S+$') then
+            vim.keymap.set('n', key, function()
+              open_target(target)
+            end, { buffer = bufnr, silent = true, nowait = true })
+          end
+        end
+      end
+
+      local winid = vim.fn.bufwinid(bufnr)
+      if winid == -1 then
+        winid = vim.api.nvim_get_current_win()
+      end
+      local win_width = vim.api.nvim_win_get_width(winid)
+      local base_path_col = math.max(38, math.floor(win_width * 0.56))
+      for _, item in ipairs(extmarks) do
+        local path_col = math.max(base_path_col, item.left_width + 20)
+        local max_path_len = math.max(12, win_width - path_col - 2)
+        local text = compact_path_middle(item.parent, max_path_len)
+
+        local clear_cells = math.max(8, path_col - item.left_width)
+        local leaf_pad = math.max(2, clear_cells - vim.api.nvim_strwidth(item.leaf))
+        vim.api.nvim_buf_set_extmark(bufnr, leaf_ns, item.row, item.path_col, {
+          virt_text = { { item.leaf .. (' '):rep(leaf_pad), 'DashboardFiles' } },
+          virt_text_pos = 'overlay',
+        })
+
+        vim.api.nvim_buf_set_extmark(bufnr, path_ns, item.row, 0, {
+          virt_text = { { text, 'Comment' } },
+          virt_text_pos = 'overlay',
+          virt_text_win_col = path_col,
+        })
+      end
+
+      vim.keymap.set('n', '<CR>', function()
+        local row = vim.api.nvim_win_get_cursor(0)[1] - 1
+        open_target(row_targets[row])
+      end, { buffer = bufnr, silent = true, nowait = true })
+    end
+
     local function write_dashboard_projects(cache_path, projects)
       local source = 'return ' .. vim.inspect(projects)
       local dir = vim.fn.fnamemodify(cache_path, ':h')
@@ -201,6 +324,7 @@ return {
     require('dashboard').setup {
       theme = 'hyper',
       config = {
+        shortcuts_left_side = true,
         header = fire_headers[math.random(#fire_headers)],
         week_header = {
           enable = false,
@@ -226,6 +350,28 @@ return {
         },
       },
     }
+
+    vim.api.nvim_create_autocmd('User', {
+      pattern = 'DashboardLoaded',
+      group = vim.api.nvim_create_augroup('dashboard-custom-restyle', { clear = true }),
+      callback = function(args)
+        vim.schedule(function()
+          if vim.api.nvim_buf_is_valid(args.buf) then
+            restyle_dashboard_entries(args.buf)
+          end
+        end)
+      end,
+    })
+
+    vim.api.nvim_create_autocmd('VimResized', {
+      group = 'dashboard-custom-restyle',
+      callback = function()
+        local buf = vim.api.nvim_get_current_buf()
+        if vim.bo[buf].filetype == 'dashboard' then
+          restyle_dashboard_entries(buf)
+        end
+      end,
+    })
   end,
   dependencies = { { 'nvim-tree/nvim-web-devicons' } },
 }

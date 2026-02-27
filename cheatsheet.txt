@@ -20,6 +20,9 @@ Move/show scratchpad | <Win-C-a>
 Hide bar | <Win-i>
 Force quit window  | <Win-Alt-a>
 Close window | <Win-Q>
+Open terminal | <Win-Enter>
+Open browser | <Win-shift-Enter>
+Open file-tree explorer | <Win-shift-n>
 ## Vim 
 Start recording macro | q[letter] 
 Stop recording macro | q
