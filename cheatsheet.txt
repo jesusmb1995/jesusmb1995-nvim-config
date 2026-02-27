@@ -135,5 +135,7 @@ Chat window | <Ctrl-l> (or simply ctrl -> with vim bindings extension)
 Accept perm command | cursor-agent 
 Cursor terminal cli | cursor-cli
 ## Cursor agent terminal inside neovim 
-Toggle agent terminal | <C-l>
+Open/focus agent terminal | <C-l>
+Close agent terminal (from inside) | <C-l>
+Send visual selection as @file:lines ref | <C-l> (visual mode)
 Clear agent terminal output | <C-n><carriage return>

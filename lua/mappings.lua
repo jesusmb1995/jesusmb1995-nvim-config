@@ -593,9 +593,66 @@ if vim.env.NVIM_MINIMAL == nil then
     vim.fn.system(system_command)
   end, { desc = "Open folder and file in VS Code, start new chat" })
 
-  map({ "n", "t" }, "<C-l>", function()
-    require("nvchad.term").toggle { pos = "vsp", cmd = "agent", id = "agentTerm" }
-  end, { desc = "Toggle agent terminal on the right" })
+  local function find_agent_term()
+    for _, opts in pairs(vim.g.nvchad_terms or {}) do
+      if opts and opts.id == "agentTerm" then
+        return opts
+      end
+    end
+    return nil
+  end
+
+  local function in_agent_term()
+    local term = find_agent_term()
+    return term ~= nil and term.buf == vim.api.nvim_get_current_buf()
+  end
+
+  local function open_or_focus_agent_term()
+    local term = find_agent_term()
+    if term and vim.api.nvim_buf_is_valid(term.buf) then
+      local win_id = vim.fn.bufwinid(term.buf)
+      if win_id ~= -1 then
+        vim.api.nvim_set_current_win(win_id)
+        vim.cmd "startinsert"
+      else
+        require("nvchad.term").toggle { pos = "vsp", cmd = "agent", id = "agentTerm" }
+      end
+    else
+      require("nvchad.term").toggle { pos = "vsp", cmd = "agent", id = "agentTerm" }
+    end
+  end
+
+  map("n", "<C-l>", open_or_focus_agent_term, { desc = "Open/focus agent terminal" })
+
+  map("t", "<C-l>", function()
+    if in_agent_term() then
+      require("nvchad.term").toggle { pos = "vsp", cmd = "agent", id = "agentTerm" }
+    else
+      open_or_focus_agent_term()
+    end
+  end, { desc = "Toggle agent terminal (close only from inside)" })
+
+  map("v", "<C-l>", function()
+    local start_line = vim.fn.line "v"
+    local end_line = vim.fn.line "."
+    if start_line > end_line then
+      start_line, end_line = end_line, start_line
+    end
+    local file = vim.fn.expand "%:."
+
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "x", false)
+    open_or_focus_agent_term()
+
+    vim.schedule(function()
+      local term = find_agent_term()
+      if term and term.buf and vim.api.nvim_buf_is_valid(term.buf) then
+        local job_id = vim.b[term.buf].terminal_job_id
+        if job_id then
+          vim.api.nvim_chan_send(job_id, "@" .. file .. ":" .. start_line .. "-" .. end_line .. " ")
+        end
+      end
+    end)
+  end, { desc = "Send file reference to agent terminal" })
 
   map("t", "<C-n>", function()
     local chan = vim.b.terminal_job_id
