@@ -16,12 +16,78 @@ if vim.env.NVIM_MINIMAL == nil then
     "<cmd> Telescope lsp_dynamic_workspace_symbols <CR>",
     { desc = "Telescope workspace symbols" }
   )
-  map(
-    { "n" },
-    "<leader>fF",
-    "<cmd> Telescope find_files hidden=true<CR>",
-    { desc = "Find files including hidden" }
-  )
+  local function is_hidden_path(path)
+    for part in (path or ""):gmatch("[^/]+") do
+      if part:sub(1, 1) == "." then
+        return true
+      end
+    end
+    return false
+  end
+
+  local function recent_files_picker(include_hidden)
+    local ok_pickers, pickers = pcall(require, "telescope.pickers")
+    local ok_finders, finders = pcall(require, "telescope.finders")
+    local ok_config, telescope_config = pcall(require, "telescope.config")
+    local ok_sorts, sorters = pcall(require, "telescope.sorters")
+    local ok_actions, actions = pcall(require, "telescope.actions")
+    local ok_state, action_state = pcall(require, "telescope.actions.state")
+    if not (ok_pickers and ok_finders and ok_config and ok_sorts and ok_actions and ok_state) then
+      vim.notify("Telescope is not available", vim.log.levels.WARN)
+      return
+    end
+
+    local cwd = vim.fs.normalize(vim.fn.getcwd())
+    local seen = {}
+    local files = {}
+    for _, file in ipairs(vim.v.oldfiles or {}) do
+      if type(file) == "string" and file ~= "" then
+        local path = vim.fs.normalize(vim.fn.expand(file))
+        local in_cwd = path == cwd or path:sub(1, #cwd + 1) == (cwd .. "/")
+        if vim.fn.filereadable(path) == 1 and in_cwd and not seen[path] then
+          local rel = vim.fn.fnamemodify(path, ":.")
+          if include_hidden or not is_hidden_path(rel) then
+            seen[path] = true
+            table.insert(files, path)
+          end
+        end
+      end
+    end
+
+    if #files == 0 then
+      vim.notify("No recent files found in current workspace", vim.log.levels.INFO)
+      return
+    end
+
+    pickers.new({}, {
+      prompt_title = include_hidden and "Recent files (MRU, hidden included)" or "Recent files (MRU)",
+      finder = finders.new_table({
+        results = files,
+        entry_maker = function(path)
+          return {
+            value = path,
+            ordinal = path,
+            display = vim.fn.fnamemodify(path, ":~:."),
+          }
+        end,
+      }),
+      sorter = sorters.empty(),
+      previewer = telescope_config.values.file_previewer({}),
+      attach_mappings = function(prompt_bufnr)
+        actions.select_default:replace(function()
+          actions.close(prompt_bufnr)
+          local selection = action_state.get_selected_entry()
+          if selection and selection.value then
+            vim.cmd("edit " .. vim.fn.fnameescape(selection.value))
+          end
+        end)
+        return true
+      end,
+    }):find()
+  end
+
+  map({ "n" }, "<leader>ff", function() recent_files_picker(false) end, { desc = "Recent files (MRU first)" })
+  map({ "n" }, "<leader>fF", function() recent_files_picker(true) end, { desc = "Recent files (MRU + hidden)" })
   map({ "n" }, "<leader>tS", "<cmd> Telescope lsp_workspace_symbols <CR>", { desc = "Telescope workspace symbols" })
 
   -- The other mappings are as default
