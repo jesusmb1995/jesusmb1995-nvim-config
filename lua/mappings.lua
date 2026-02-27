@@ -167,6 +167,7 @@ if vim.env.NVIM_MINIMAL == nil then
   map("n", "<leader>gP", ":Neogit push<CR>", { desc = "Git Push" })
   map("n", "<leader>gr", ":Neogit rebase<CR>", { desc = "Git Rebase" })
   map("n", "<leader>gf", ":Neogit fetch<CR>", { desc = "Git Fetch" })
+  map("n", "<A-l>", ":Gitsigns next_hunk<CR>", { desc = "Next git hunk" })
    -- Helper: get git root (uses git CLI, no neogit internal API)
   local function git_root()
     local result = vim.fn.systemlist("git rev-parse --show-toplevel 2>/dev/null")
