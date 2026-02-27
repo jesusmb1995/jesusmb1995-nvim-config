@@ -652,6 +652,22 @@ if vim.env.NVIM_MINIMAL == nil then
         end
       end
     end)
+  end, { desc = "Send file section reference to agent terminal" })
+  map("n", "<C-S-l>", function()
+    local file = vim.fn.expand "%:."
+
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "x", false)
+    open_or_focus_agent_term()
+
+    vim.schedule(function()
+      local term = find_agent_term()
+      if term and term.buf and vim.api.nvim_buf_is_valid(term.buf) then
+        local job_id = vim.b[term.buf].terminal_job_id
+        if job_id then
+          vim.api.nvim_chan_send(job_id, "@" .. file .. " ")
+        end
+      end
+    end)
   end, { desc = "Send file reference to agent terminal" })
 
   map("t", "<C-n>", function()
