@@ -38,6 +38,37 @@ if vim.env.NVIM_MINIMAL == nil then
     end
 
     local cwd = vim.fs.normalize(vim.fn.getcwd())
+    local function list_project_files()
+      local cmd
+      if include_hidden then
+        cmd = "fd --type f --hidden --no-ignore --exclude .git . " .. vim.fn.shellescape(cwd) .. " 2>/dev/null"
+      else
+        cmd = "fd --type f --exclude .git . " .. vim.fn.shellescape(cwd) .. " 2>/dev/null"
+      end
+      local out = vim.fn.systemlist(cmd)
+      if vim.v.shell_error ~= 0 then
+        local rg_cmd
+        if include_hidden then
+          rg_cmd = "rg --files --hidden --no-ignore --glob '!.git' " .. vim.fn.shellescape(cwd) .. " 2>/dev/null"
+        else
+          rg_cmd = "rg --files --glob '!.git' " .. vim.fn.shellescape(cwd) .. " 2>/dev/null"
+        end
+        out = vim.fn.systemlist(rg_cmd)
+      end
+      local paths = {}
+      for _, item in ipairs(out or {}) do
+        local full = item
+        if type(item) == "string" and item ~= "" and item:sub(1, 1) ~= "/" then
+          full = cwd .. "/" .. item
+        end
+        full = vim.fs.normalize(vim.fn.expand(full))
+        if vim.fn.filereadable(full) == 1 then
+          table.insert(paths, full)
+        end
+      end
+      return paths
+    end
+
     local seen = {}
     local files = {}
     for _, file in ipairs(vim.v.oldfiles or {}) do
@@ -54,13 +85,25 @@ if vim.env.NVIM_MINIMAL == nil then
       end
     end
 
+    for _, file in ipairs(list_project_files()) do
+      if not seen[file] then
+        local rel = vim.fn.fnamemodify(file, ":.")
+        if include_hidden or not is_hidden_path(rel) then
+          seen[file] = true
+          table.insert(files, file)
+        end
+      end
+    end
+
     if #files == 0 then
-      vim.notify("No recent files found in current workspace", vim.log.levels.INFO)
+      vim.notify("No files found in current workspace", vim.log.levels.INFO)
       return
     end
 
     pickers.new({}, {
-      prompt_title = include_hidden and "Recent files (MRU, hidden included)" or "Recent files (MRU)",
+      prompt_title = include_hidden
+          and "Files (MRU first + all project files, hidden included)"
+        or "Files (MRU first + all project files)",
       finder = finders.new_table({
         results = files,
         entry_maker = function(path)
@@ -71,7 +114,7 @@ if vim.env.NVIM_MINIMAL == nil then
           }
         end,
       }),
-      sorter = sorters.empty(),
+      sorter = telescope_config.values.generic_sorter({}),
       previewer = telescope_config.values.file_previewer({}),
       attach_mappings = function(prompt_bufnr)
         actions.select_default:replace(function()
@@ -88,6 +131,18 @@ if vim.env.NVIM_MINIMAL == nil then
 
   map({ "n" }, "<leader>ff", function() recent_files_picker(false) end, { desc = "Recent files (MRU first)" })
   map({ "n" }, "<leader>fF", function() recent_files_picker(true) end, { desc = "Recent files (MRU + hidden)" })
+  map({ "n" }, "<leader>tm", function()
+    local ok, api = pcall(require, "nvim-tree.api")
+    if not ok then
+      vim.notify("nvim-tree API not available", vim.log.levels.WARN)
+      return
+    end
+    if api.tree and api.tree.toggle_git_clean_filter then
+      api.tree.toggle_git_clean_filter()
+      return
+    end
+    vim.notify("toggle_git_clean_filter is not supported by your nvim-tree version", vim.log.levels.WARN)
+  end, { desc = "NvimTree toggle modified-files filter" })
   map({ "n" }, "<leader>tS", "<cmd> Telescope lsp_workspace_symbols <CR>", { desc = "Telescope workspace symbols" })
 
   -- The other mappings are as default
@@ -622,12 +677,77 @@ if vim.env.NVIM_MINIMAL == nil then
 
   vim.keymap.set("n", "<leader>np", ":NoNeckPain<CR>", { noremap = true, silent = true, desc = "No neck pain toggle" })
 
+  local terminal_file_ref_pattern = [[\v(\f+\/\f+|\f+\.\f+)(:\d+(:\d+)?)?]]
+
+  local function jump_terminal_file_ref(forward)
+    local flags = forward and "W" or "bW"
+    local found = vim.fn.search(terminal_file_ref_pattern, flags)
+    if found == 0 then
+      vim.notify("No more file references found", vim.log.levels.INFO)
+    end
+  end
+
+  local function open_terminal_cfile_in_tab()
+    local raw = vim.fn.expand "<cfile>"
+    if raw == nil or raw == "" then
+      vim.notify("No file reference under cursor", vim.log.levels.WARN)
+      return
+    end
+
+    local path, lnum, col = raw:match("^(.-):(%d+):(%d+)$")
+    if not path then
+      path, lnum = raw:match("^(.-):(%d+)$")
+    end
+    path = path or raw
+
+    path = vim.fs.normalize(vim.fn.expand(path))
+    if vim.fn.filereadable(path) ~= 1 then
+      vim.notify("File not found: " .. path, vim.log.levels.WARN)
+      return
+    end
+
+    vim.cmd("tabedit " .. vim.fn.fnameescape(path))
+    if lnum then
+      local row = tonumber(lnum) or 1
+      local c = math.max((tonumber(col) or 1) - 1, 0)
+      vim.api.nvim_win_set_cursor(0, { row, c })
+    end
+  end
+
   -- Dont resize terminals vertically.
   vim.api.nvim_create_autocmd("TermOpen", {
     pattern = "*",
     callback = function()
+      local buf = vim.api.nvim_get_current_buf()
       vim.api.nvim_set_option_value("winfixwidth", true, {})
       vim.api.nvim_set_option_value("winfixheight", true, {})
+      vim.keymap.set("n", "]f", function() jump_terminal_file_ref(true) end, {
+        buffer = buf,
+        silent = true,
+        nowait = true,
+        desc = "Next file reference in terminal",
+      })
+      vim.keymap.set("n", "[f", function() jump_terminal_file_ref(false) end, {
+        buffer = buf,
+        silent = true,
+        nowait = true,
+        desc = "Previous file reference in terminal",
+      })
+      vim.keymap.set("n", "gf", open_terminal_cfile_in_tab, {
+        buffer = buf,
+        silent = true,
+        nowait = true,
+        desc = "Open terminal file reference in new tab",
+      })
+      vim.keymap.set("t", "gf", function()
+        vim.cmd "stopinsert"
+        open_terminal_cfile_in_tab()
+      end, {
+        buffer = buf,
+        silent = true,
+        nowait = true,
+        desc = "Open terminal file reference in new tab",
+      })
     end,
   })
   -- Neither when toggle hide. Force reapply option.

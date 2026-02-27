@@ -37,15 +37,20 @@ Open floating terminal | <A-i>
 Collapse all (Tree, symbols, etc.) | W
 Expand all (Tree, symbols, etc.) | E  
 All errors and notifications messages | :NoiceAll
+Go into file when hovering on file path | gf
+Go into folder when hovering on file path | gF
 ## Custom
 Jump to bookmark | :J [location]
 Open current buffer window in new tab | <leader>B" 
 Open new tab" | <leader>T"
+Next file in terminal | ]f
+Pref file in terminal | [f
 ## Nvim-directory-tree
 CD into folder | <C-]>
 Expand directory | <C-E>
 Toggle Show Hidden | <H>
 Toggle Show Ignored | <I>
+Toggle modified files filter (git clean) | <leader>tm
 Open with system (e.g. image or folder explorer) | s
 ## No-neck-pain
 Center (with no neck pain) | <leader>np
