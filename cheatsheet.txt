@@ -28,10 +28,13 @@ Go previous cursor | <C-o>
 Record current file path to clipboard | :let @+ = expand('%:p')
 Write all changed buffers | :wa
 Delete all.within.same.block | dW
+Insert into next group (e.g. () {} []) | ci<group>
+Buffer undo history | :UndoTreeToggle
 ## Nv-chad
 Open floating terminal | <A-i>
 Collapse all (Tree, symbols, etc.) | W
 Expand all (Tree, symbols, etc.) | E  
+All errors and notifications messages | :NoiceAll
 ## Custom
 Jump to bookmark | :J [location]
 Open current buffer window in new tab | <leader>B" 
