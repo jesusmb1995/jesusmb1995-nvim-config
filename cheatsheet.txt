@@ -110,9 +110,13 @@ Stage all conflicts as resolved (alias) | git-resolve
 Stage all conflicts as resolved and refresh (alias) | stg-resolve 
 ## gitsigns
 Stage hunk (custom mmap)| <leader>Hs
+## Target runner
+run via .local_cmd_bookmarks (horizontal terminal) | <leader><A-h>
+run via .local_cmd_bookmarks (vertical terminal) | <leader><A-v>
+CTest/GTest picker (save & run via .local_cmd_bookmarks) | <leader><A-H>
 ## Cursor AI editor
 Next review | <Alt-l>
 Accept review | <Ctrl-y>
-Chat window | <Ctrl-l>
+Chat window | <Ctrl-l> (or simply ctrl -> with vim bindings extension)
 Accept perm command | cursor-agent 
 Cursor terminal cli | cursor-cli
