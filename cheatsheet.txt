@@ -35,6 +35,7 @@ Insert into next group (e.g. () {} []) | ci<group>
 Buffer undo history | :UndoTreeToggle
 standalone vim temporary bookmark set | m<letter>
 jump to vim bookmark | '<letter>
+jump to vim bookrmak (with telescpe) | <leader>ma
 ## Nv-chad
 Open floating terminal | <A-i>
 Collapse all (Tree, symbols, etc.) | W
@@ -136,9 +137,9 @@ Accept perm command | cursor-agent
 Cursor terminal cli | cursor-cli
 ## Cursor agent terminal inside neovim 
 Next hunk | <A-l>
-Open/focus agent terminal | <C-l>
+Open/focus agent terminal | <leader><C-l>
 Attach file lines (visual mode) | <C-l>
-Attach file to chat | <C-S-l>
+Attach file to chat | <leader><C-S-l>
 Close agent terminal (from inside) | <C-l>
 Send visual selection as @file:lines ref | <C-l> (visual mode)
 Clear agent terminal output | <C-n><carriage return>
