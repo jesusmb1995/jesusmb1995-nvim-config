@@ -623,9 +623,9 @@ if vim.env.NVIM_MINIMAL == nil then
     end
   end
 
-  map("n", "<C-l>", open_or_focus_agent_term, { desc = "Open/focus agent terminal" })
+  map("n", "<leader><C-l>", open_or_focus_agent_term, { desc = "Open/focus agent terminal" })
 
-  map("t", "<C-l>", function()
+  map("t", "<leader><C-l>", function()
     if in_agent_term() then
       require("nvchad.term").toggle { pos = "vsp", cmd = "agent", id = "agentTerm" }
     else
