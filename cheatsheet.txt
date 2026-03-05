@@ -43,6 +43,7 @@ Expand all (Tree, symbols, etc.) | E
 All errors and notifications messages | :NoiceAll
 Go into file when hovering on file path | gf
 Go into folder when hovering on file path | gF
+Auto reload (all) buffers on changes | :set autoread
 ## Custom
 Jump to bookmark | :J [location]
 Open current buffer window in new tab | <leader>B" 
@@ -58,6 +59,8 @@ Toggle modified files filter (git clean) | <leader>tm
 Open with system (e.g. image or folder explorer) | s
 ## No-neck-pain
 Center (with no neck pain) | <leader>np
+## Profiler
+Toggle profiler | :SnacksProfilerToggle
 ## Plugin-managers 
 Lazy plugin manager | :Lazy
 Mason LSP plugin manager | :Mason
@@ -76,6 +79,7 @@ Find marks | <leader>ma
 Go to definition | gd
 References | gr
 Diagnostic list (errors and warnings) | <leader>ds
+Diagnostic next | ]d 
 Hover | K
 Rename | <leader>rn
 Code actions | <leader>ca
@@ -120,6 +124,7 @@ Delete patch into staging area | stg delete --spill [patch]
 Move patch to staging area | stg pop [patch] --spill
 Stash staged changes (unstaged remains) | git stash --staged
 Stage all conflicts as resolved | git status --short | grep '^UU' | awk '{print $1}' | xargs git add
+Empty current patch but keep changes locally (spill) | <leader>gku
 ## Aliases (.aliases)
 Stage all conflicts as resolved (alias) | git-resolve 
 Stage all conflicts as resolved and refresh (alias) | stg-resolve 
