@@ -225,6 +225,7 @@ if vim.env.NVIM_MINIMAL == nil then
       vim.defer_fn(function()
         pcall(gitsigns.nav_hunk, "first")
         vim.defer_fn(function()
+          vim.cmd("normal! zz")
           pcall(gitsigns.preview_hunk_inline)
         end, 100)
       end, 200)
@@ -241,6 +242,7 @@ if vim.env.NVIM_MINIMAL == nil then
     vim.defer_fn(function()
       local after = vim.api.nvim_win_get_cursor(0)
       if after[1] ~= before[1] then
+        vim.cmd("normal! zz")
         pcall(gitsigns.preview_hunk_inline)
       else
         goto_next_file_hunk()
