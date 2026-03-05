@@ -22,8 +22,8 @@ return {
     opts = {
       lsp = {
         progress = { enabled = false },
-        hover = { enabled = true },
-        signature = { enabled = true },
+        hover = { enabled = false },
+        signature = { enabled = false },
       },
       messages = { enabled = true, view = "mini" },
       notify = { enabled = true, view = "notify" },
