@@ -55,8 +55,25 @@ return {
   enabled = function()
     return vim.env.NVIM_MINIMAL == nil
   end,
-  event = "VeryLazy",
   version = false, -- Never set this value to "*"! Never!
+  lazy = true,
+  cmd = {
+    "AvanteAsk",
+    "AvanteChat",
+    "AvanteToggle",
+    "AvanteEdit",
+    "AvanteBuild",
+    "AvanteClear",
+    "AvanteRefresh",
+    "AvanteSwitchProvider",
+    "AvanteShowRepoMap",
+  },
+  keys = {
+    { "<leader>aa", desc = "Avante: Ask" },
+    { "<leader>ae", desc = "Avante: Edit", mode = "v" },
+    { "<leader>ar", desc = "Avante: Refresh" },
+    { "<leader>at", desc = "Avante: Toggle" },
+  },
   opts = get_config(),
   -- if you want to build from source then do `make BUILD_FROM_SOURCE=true`
   build = "make",

@@ -56,6 +56,8 @@ Expand directory | <C-E>
 Toggle Show Hidden | <H>
 Toggle Show Ignored | <I>
 Toggle modified files filter (git clean) | <leader>tm
+Toggle modified files filter (since msater) | <leader>tM
+Toggle string filter | <leader>fM
 Open with system (e.g. image or folder explorer) | s
 ## No-neck-pain
 Center (with no neck pain) | <leader>np
@@ -140,11 +142,12 @@ Accept review | <Ctrl-y>
 Chat window | <Ctrl-l> (or simply ctrl -> with vim bindings extension)
 Accept perm command | cursor-agent 
 Cursor terminal cli | cursor-cli
+Open cursor | <leader><Ctrl-S-l> 
 ## Cursor agent terminal inside neovim 
 Next hunk | <A-l>
 Open/focus agent terminal | <leader><C-l>
 Attach file lines (visual mode) | <C-l>
-Attach file to chat | <leader><C-S-l>
+Attach file to chat | <C-S-l>
 Close agent terminal (from inside) | <C-l>
 Send visual selection as @file:lines ref | <C-l> (visual mode)
 Clear agent terminal output | <C-n><carriage return>
