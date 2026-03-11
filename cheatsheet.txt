@@ -59,6 +59,8 @@ Toggle modified files filter (git clean) | <leader>tm
 Toggle modified files filter (since msater) | <leader>tM
 Toggle string filter | <leader>fM
 Open with system (e.g. image or folder explorer) | s
+Increase window width | <C-A-S-Right>
+Decrease window width | <C-A-S-Left>
 ## No-neck-pain
 Center (with no neck pain) | <leader>np
 ## Profiler
@@ -127,6 +129,9 @@ Move patch to staging area | stg pop [patch] --spill
 Stash staged changes (unstaged remains) | git stash --staged
 Stage all conflicts as resolved | git status --short | grep '^UU' | awk '{print $1}' | xargs git add
 Empty current patch but keep changes locally (spill) | <leader>gku
+Select and cd to git worktree | <leader>gwg
+Create worktree for branch and cd to it | <leader>gwc
+Remove all clean git worktrees | <leader>gwx
 ## Aliases (.aliases)
 Stage all conflicts as resolved (alias) | git-resolve 
 Stage all conflicts as resolved and refresh (alias) | stg-resolve 
@@ -136,6 +141,7 @@ Stage hunk (custom mmap)| <leader>Hs
 run via .local_cmd_bookmarks (horizontal terminal) | <leader><A-h>
 run via .local_cmd_bookmarks (vertical terminal) | <leader><A-v>
 CTest/GTest picker (save & run via .local_cmd_bookmarks) | <leader><A-H>
+CTest/GTest picker (vertical terminal) | <leader><A-V>
 ## Cursor AI editor
 Next review | <Alt-l>
 Accept review | <Ctrl-y>

@@ -228,6 +228,33 @@ if vim.env.NVIM_MINIMAL == nil then
   map("n", "<leader>gp", ":Neogit pull<CR>", { desc = "Git pull" })
   map("n", "<leader>gP", ":Neogit push<CR>", { desc = "Git Push" })
   map("n", "<leader>gr", ":Neogit rebase<CR>", { desc = "Git Rebase" })
+  map("n", "<leader>grb", function()
+    local root = vim.fn.systemlist("git rev-parse --show-toplevel 2>/dev/null")[1]
+    if vim.v.shell_error ~= 0 or not root then
+      vim.notify("Not inside a git repository", vim.log.levels.ERROR)
+      return
+    end
+
+    vim.fn.system("git rev-parse --verify upstream/main 2>/dev/null")
+    if vim.v.shell_error ~= 0 then
+      vim.notify("upstream/main does not exist", vim.log.levels.ERROR)
+      return
+    end
+
+    local stg_path = "/home/linuxbrew/.linuxbrew/bin/stg"
+    local patch_count = tonumber(vim.fn.trim(vim.fn.system(stg_path .. " series --count 2>/dev/null"))) or 0
+    local is_stg = patch_count > 0
+
+    if is_stg then
+      local cmd = stg_path .. " rebase upstream/main"
+      vim.notify("Running: stg rebase upstream/main", vim.log.levels.INFO)
+      require("nvchad.term").runner { pos = "sp", cmd = cmd, id = "htoggleTerm", clear_cmd = false }
+    else
+      local cmd = "git rebase upstream/main"
+      vim.notify("Running: git rebase upstream/main", vim.log.levels.INFO)
+      require("nvchad.term").runner { pos = "sp", cmd = cmd, id = "htoggleTerm", clear_cmd = false }
+    end
+  end, { desc = "Rebase upstream/main (stg if stg branch, else git)" })
   map("n", "<leader>gf", ":Neogit fetch<CR>", { desc = "Git Fetch" })
   map("n", "<A-l>", function()
     local gitsigns = require("gitsigns")
@@ -388,6 +415,74 @@ if vim.env.NVIM_MINIMAL == nil then
   -- <leader>gwg: Select and cd to Git worktree
   map("n", "<leader>gwg", select_and_cd_worktree, { desc = "Select and cd to Git Worktree" })
 
+  -- <leader>gwx: Remove all clean git worktrees (no staged/unstaged/untracked changes)
+  map("n", "<leader>gwx", function()
+    local worktrees = git_worktree_list()
+    if not worktrees or #worktrees == 0 then
+      vim.notify("No git worktrees found", vim.log.levels.WARN)
+      return
+    end
+
+    local main_root = git_root()
+    if main_root then
+      main_root = vim.fn.fnamemodify(main_root, ":p"):gsub("/$", "")
+    end
+
+    local Job = require("plenary.job")
+    local clean = {}
+    local dirty = {}
+
+    for _, wt in ipairs(worktrees) do
+      local wt_norm = vim.fn.fnamemodify(wt, ":p"):gsub("/$", "")
+      if wt_norm ~= main_root then
+        local job = Job:new({ command = "git", args = { "-C", wt, "status", "--porcelain", "-uno" } })
+        job:sync()
+        if job.code == 0 and #job:result() == 0 then
+          table.insert(clean, wt)
+        else
+          table.insert(dirty, wt)
+        end
+      end
+    end
+
+    if #clean == 0 then
+      local msg = "No clean worktrees to remove."
+      if #dirty > 0 then
+        msg = msg .. " " .. #dirty .. " worktree(s) have uncommitted changes."
+      end
+      vim.notify(msg, vim.log.levels.INFO)
+      return
+    end
+
+    local prompt = "Remove " .. #clean .. " clean worktree(s)?\n"
+    for _, wt in ipairs(clean) do
+      prompt = prompt .. "  - " .. wt .. "\n"
+    end
+    prompt = prompt .. "Confirm? [y/N]: "
+
+    vim.ui.input({ prompt = prompt }, function(input)
+      if not input or input:lower() ~= "y" then
+        vim.notify("Aborted", vim.log.levels.INFO)
+        return
+      end
+      local removed = 0
+      for _, wt in ipairs(clean) do
+        local job = Job:new({
+          command = "git",
+          args = { "worktree", "remove", wt },
+          cwd = main_root,
+        })
+        job:sync()
+        if job.code == 0 then
+          removed = removed + 1
+        else
+          vim.notify("Failed to remove: " .. wt .. "\n" .. table.concat(job:stderr_result(), "\n"), vim.log.levels.ERROR)
+        end
+      end
+      vim.notify("Removed " .. removed .. " clean worktree(s)", vim.log.levels.INFO)
+    end)
+  end, { desc = "Remove clean Git Worktrees" })
+
   -- <leader>gbs: Git branch spin-off with default name when under packages/<package>
   map("n", "<leader>gs", function()
     local root = git_root()
@@ -497,7 +592,7 @@ if vim.env.NVIM_MINIMAL == nil then
   -- show in Telescope, save selected command to .local_cmd_bookmarks and run it.
   -- <C-f> in prompt: use typed text as *text* gtest wildcard on highlighted item's binary.
   -- TODO: Make it a plugin, even integrate well into telescope (e.g. for tests only on current file)
-  map("n", "<leader><A-H>", function()
+  local function ctest_gtest_picker(term_pos, term_id)
     -- Search upward from cwd for a directory containing CTestTestfile.cmake.
     local function find_build_dir()
       local cwd = vim.fn.getcwd()
@@ -644,7 +739,7 @@ if vim.env.NVIM_MINIMAL == nil then
           vim.notify("CTest picker: failed to write " .. bfile, vim.log.levels.ERROR)
         end
       end
-      require("nvchad.term").runner { pos = "sp", cmd = item.command, id = "htoggleTerm", clear_cmd = false }
+      require("nvchad.term").runner { pos = term_pos, cmd = item.command, id = term_id, clear_cmd = false }
       vim.notify("Running: " .. item.command, vim.log.levels.INFO)
     end
 
@@ -713,7 +808,15 @@ if vim.env.NVIM_MINIMAL == nil then
         if choice then save_and_run(choice) end
       end)
     end
-  end, { desc = "CTest / GTest picker — save to .local_cmd_bookmarks and run" })
+  end
+
+  map("n", "<leader><A-H>", function()
+    ctest_gtest_picker("sp", "htoggleTerm")
+  end, { desc = "CTest / GTest picker — horizontal terminal" })
+
+  map("n", "<leader><A-V>", function()
+    ctest_gtest_picker("vsp", "vtoggleTerm")
+  end, { desc = "CTest / GTest picker — vertical right terminal" })
 
   map("n", "<leader>X", ":tabclose | bdelete<CR>", { desc = "Close current tab and its buffers" })
 
@@ -1164,3 +1267,7 @@ end, { desc = "Format file or range (in visual mode)" })
 vim.keymap.set("n", "<leader>l", function()
   cycle_linter(true)
 end, { desc = "Trigger linting for current file" })
+
+-- Resize panel width with Ctrl+Alt+Shift+Arrows
+map("n", "<C-A-S-Right>", ":vertical resize +5<CR>", { desc = "Increase window width", silent = true })
+map("n", "<C-A-S-Left>", ":vertical resize -5<CR>", { desc = "Decrease window width", silent = true })

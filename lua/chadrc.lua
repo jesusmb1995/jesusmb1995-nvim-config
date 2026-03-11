@@ -25,7 +25,10 @@ M.base46 = {
 if vim.env.NVIM_MINIMAL == nil then
   -- Relative line numbers on file tree by default
   require('nvim-tree').setup({
-    view = {relativenumber = true},
+    view = {relativenumber = true, width = 40},
+    renderer = {
+      full_name = true,
+    },
     update_focused_file = {
       enable = true,
     },
