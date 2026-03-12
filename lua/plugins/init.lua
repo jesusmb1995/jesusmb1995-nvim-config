@@ -38,6 +38,15 @@ function GET_INIT_CONFIG()
           },
         },
       },
+
+      {
+        "nvim-telescope/telescope-fzf-native.nvim",
+        build = "make",
+        lazy = false,
+        config = function()
+          require("telescope").load_extension("fzf")
+        end,
+      },
     }
   else
     return {
