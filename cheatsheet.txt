@@ -65,6 +65,7 @@ Decrease window width | <C-A-S-Left>
 Center (with no neck pain) | <leader>np
 ## Profiler
 Toggle profiler | :SnacksProfilerToggle
+Show profiler results | :SnacksProfilerShow
 ## Plugin-managers 
 Lazy plugin manager | :Lazy
 Mason LSP plugin manager | :Mason
