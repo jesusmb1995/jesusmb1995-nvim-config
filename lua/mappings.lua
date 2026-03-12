@@ -412,8 +412,63 @@ if vim.env.NVIM_MINIMAL == nil then
     end)
   end
 
+  -- Opens a new nvim instance at the given directory (tmux > alacritty > error)
+  -- Optional file_arg: e.g. "+42 src/foo.lua" to open a file at a specific line
+  local function open_nvim_in_new_instance(dir, file_arg)
+    local nvim_bin = vim.v.progpath
+    local cmd = { nvim_bin }
+    if file_arg then
+      for _, a in ipairs(file_arg) do
+        table.insert(cmd, a)
+      end
+    end
+
+    local tmux_env = vim.fn.getenv("TMUX")
+    if tmux_env ~= vim.NIL and tmux_env ~= "" then
+      vim.fn.jobstart(vim.list_extend({ "tmux", "new-window", "-c", dir }, cmd), { detach = true })
+    elseif vim.fn.executable("alacritty") == 1 then
+      vim.fn.jobstart(vim.list_extend({ "alacritty", "--working-directory", dir, "-e" }, cmd), { detach = true })
+    else
+      vim.notify("No supported terminal found (tmux/alacritty)", vim.log.levels.ERROR)
+      return
+    end
+    vim.notify("Opened new nvim in: " .. dir, vim.log.levels.INFO)
+  end
+
   -- <leader>gwg: Select and cd to Git worktree
   map("n", "<leader>gwg", select_and_cd_worktree, { desc = "Select and cd to Git Worktree" })
+
+  -- <leader>gwG: Select git worktree and open in a new nvim instance (with current file)
+  map("n", "<leader>gwG", function()
+    local worktrees = git_worktree_list()
+    if not worktrees or #worktrees == 0 then
+      vim.notify("No git worktrees found", vim.log.levels.WARN)
+      return
+    end
+
+    local cur_line = vim.fn.line(".")
+    local cur_file = vim.fn.expand("%:p")
+    local cur_root = git_root()
+
+    vim.ui.select(worktrees, { prompt = "Select git worktree (new nvim):" }, function(choice)
+      if not choice then return end
+      local target = worktree_cd_target(choice)
+      local file_arg = nil
+      if cur_root and cur_file ~= "" then
+        local root_norm = vim.fn.fnamemodify(cur_root, ":p"):gsub("/$", "")
+        local file_norm = vim.fn.fnamemodify(cur_file, ":p"):gsub("/$", "")
+        if file_norm:sub(1, #root_norm + 1) == root_norm .. "/" then
+          local rel = file_norm:sub(#root_norm + 2)
+          local wt_root = vim.fn.fnamemodify(choice, ":p"):gsub("/$", "")
+          local candidate = wt_root .. "/" .. rel
+          if vim.fn.filereadable(candidate) == 1 then
+            file_arg = { "+" .. cur_line, rel }
+          end
+        end
+      end
+      open_nvim_in_new_instance(target, file_arg)
+    end)
+  end, { desc = "Select Git Worktree → new nvim instance" })
 
   -- <leader>gwx: Remove all clean git worktrees (no staged/unstaged/untracked changes)
   map("n", "<leader>gwx", function()
@@ -587,6 +642,71 @@ if vim.env.NVIM_MINIMAL == nil then
       end,
     }):start()
   end, { desc = "Create worktree for selected branch in ../<repo-name>-<branchname> and cd to it" })
+
+  -- <leader>gwC: Create worktree for <branch> and open in a new nvim instance
+  map("n", "<leader>gwC", function()
+    local Job = require("plenary.job")
+    local notify = vim.notify
+
+    local root = git_root()
+    if not root then
+      notify("Not inside a Git repository", vim.log.levels.ERROR)
+      return
+    end
+    local repo_name = vim.fn.fnamemodify(root, ":t")
+
+    local branches = {}
+    Job:new({
+      command = "git",
+      args = { "branch", "--format=%(refname:short)" },
+      cwd = root,
+      on_exit = function(j)
+        vim.schedule(function()
+          local results = j:result()
+          for _, branch in ipairs(results) do
+            local b = vim.trim(branch)
+            if #b > 0 then
+              table.insert(branches, b)
+            end
+          end
+
+          vim.ui.select(branches, { prompt = "Select branch to create worktree (new nvim):" }, function(branch_name)
+            if not branch_name then return end
+
+            local parent_dir = vim.fn.fnamemodify(root, ":h")
+            local worktree_dir = parent_dir .. "/" .. repo_name .. "-" .. branch_name
+
+            local all_wts = git_worktree_list()
+            for _, wt_path in ipairs(all_wts or {}) do
+              if vim.fn.fnamemodify(wt_path, ":p") == vim.fn.fnamemodify(worktree_dir, ":p") then
+                notify("Worktree already exists at: " .. worktree_dir, vim.log.levels.INFO)
+                local target = worktree_cd_target(worktree_dir)
+                open_nvim_in_new_instance(target)
+                return
+              end
+            end
+
+            Job:new({
+              command = "git",
+              args = { "worktree", "add", worktree_dir, branch_name },
+              cwd = root,
+              on_exit = function(j2, return_val)
+                vim.schedule(function()
+                  if return_val == 0 then
+                    notify("Worktree created: " .. worktree_dir, vim.log.levels.INFO)
+                    local target = worktree_cd_target(worktree_dir)
+                    open_nvim_in_new_instance(target)
+                  else
+                    notify("Error creating worktree: " .. table.concat(j2:stderr_result(), " "), vim.log.levels.ERROR)
+                  end
+                end)
+              end,
+            }):start()
+          end)
+        end)
+      end,
+    }):start()
+  end, { desc = "Create worktree for branch → new nvim instance" })
 
   -- CTest / GTest picker: find build dir, list ctest tests + gtest suites/cases,
   -- show in Telescope, save selected command to .local_cmd_bookmarks and run it.
