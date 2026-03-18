@@ -22,6 +22,15 @@ return {
     },
   },
   {
+    "nvim-tree/nvim-tree.lua",
+    opts = {
+      view = { relativenumber = true, width = 40 },
+      renderer = { full_name = true },
+      update_focused_file = { enable = true },
+      update_cwd = true,
+    },
+  },
+  {
     "stevearc/dressing.nvim",
     event = "VeryLazy",
     opts = {
@@ -38,9 +47,9 @@ return {
     },
     opts = {
       throttle = 1000 / 30,
-      -- cmdline = {
-      --   view = "cmdline",
-      -- },
+      cmdline = {
+        view = "cmdline",
+      },
       lsp = {
         progress = { enabled = false },
         hover = { enabled = false },

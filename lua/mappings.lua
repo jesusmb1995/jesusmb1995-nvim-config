@@ -1235,8 +1235,8 @@ if vim.env.NVIM_MINIMAL == nil then
     pattern = "*",
     callback = function()
       -- Close nvim tree and vertical terminals to avoid weird effects.
-      local ok, nvim_tree = pcall(require, "nvim-tree.api")
-      if ok and nvim_tree.tree.is_visible() then
+      local nvim_tree = package.loaded["nvim-tree.api"]
+      if nvim_tree and nvim_tree.tree.is_visible() then
         vim.defer_fn(function()
           nvim_tree.tree.close()
         end, 70)
@@ -1282,38 +1282,55 @@ if vim.env.NVIM_MINIMAL == nil then
   -- TODO .. and fix resizing twice to 80 then 120
   -- TODO keep nvimtree resized to expanded size on no-neck-pain when new buffer is opened
 
-  -- Automatically trigger reisze of windows when nvimtree is opened
-  local nvim_tree_events = require "nvim-tree.events"
-  nvim_tree_events.subscribe(nvim_tree_events.Event.TreeOpen, function()
-    local vertical_count = 0
-    local defered = false
-    for _, win in ipairs(vim.api.nvim_list_wins()) do
-      local buf = vim.api.nvim_win_get_buf(win)
-      if
-        vim.api.nvim_get_option_value("buftype", { buf = buf }) == ""
-        or vim.api.nvim_get_option_value("buftype", { buf = buf }) == "terminal"
-      then
-        local win_width = vim.api.nvim_win_get_width(win)
-        local win_height = vim.api.nvim_win_get_height(win)
-        local is_vertical = win_height >= win_width - 30
-        if is_vertical then
-          vertical_count = vertical_count + 1
-        end
-        if vertical_count > 2 then
-          defered = true
-          vim.defer_fn(function()
-            require("no-neck-pain").toggle(false)
-            vim.cmd.NvimTreeResize(30)
-            vim.cmd "wincmd ="
-          end, 30)
-          break
+  -- Automatically trigger resize of windows when nvimtree is opened
+  -- Deferred: subscribe only after nvim-tree is actually loaded
+  local function subscribe_tree_open_resize()
+    local nvim_tree_events = require "nvim-tree.events"
+    nvim_tree_events.subscribe(nvim_tree_events.Event.TreeOpen, function()
+      local vertical_count = 0
+      local defered = false
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        local buf = vim.api.nvim_win_get_buf(win)
+        if
+          vim.api.nvim_get_option_value("buftype", { buf = buf }) == ""
+          or vim.api.nvim_get_option_value("buftype", { buf = buf }) == "terminal"
+        then
+          local win_width = vim.api.nvim_win_get_width(win)
+          local win_height = vim.api.nvim_win_get_height(win)
+          local is_vertical = win_height >= win_width - 30
+          if is_vertical then
+            vertical_count = vertical_count + 1
+          end
+          if vertical_count > 2 then
+            defered = true
+            vim.defer_fn(function()
+              require("no-neck-pain").toggle(false)
+              vim.cmd.NvimTreeResize(30)
+              vim.cmd "wincmd ="
+            end, 30)
+            break
+          end
         end
       end
-    end
-    if not defered then
-      vim.cmd "wincmd ="
-    end
-  end)
+      if not defered then
+        vim.cmd "wincmd ="
+      end
+    end)
+  end
+
+  if package.loaded["nvim-tree"] then
+    subscribe_tree_open_resize()
+  else
+    vim.api.nvim_create_autocmd("User", {
+      pattern = "LazyLoad",
+      once = true,
+      callback = function(args)
+        if args.data == "nvim-tree.lua" then
+          subscribe_tree_open_resize()
+        end
+      end,
+    })
+  end
 end
 
 local _conform = require "conform"

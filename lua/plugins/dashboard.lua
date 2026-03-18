@@ -41,10 +41,11 @@ return {
     end
 
     local function load_j_bookmarks()
-      local lines = vim.fn.systemlist("zsh -c 'source ~/.zshrc; showmarks' 2>/dev/null")
-      if vim.v.shell_error ~= 0 then
+      local bookmarks_file = vim.fn.expand('~/.bookmarks')
+      if vim.fn.filereadable(bookmarks_file) ~= 1 then
         return {}
       end
+      local lines = vim.fn.readfile(bookmarks_file)
 
       local stats_path = vim.fn.stdpath('data') .. '/zsh-bookmark-jumper.json'
       local usage_stats = {}
@@ -57,14 +58,17 @@ return {
 
       local bookmarks = {}
       for _, line in ipairs(lines) do
-        local name, path = line:match('^(%S+)%s+(.+)$')
-        local normalized_path = normalize_existing_dir(path)
-        if name and normalized_path then
-          table.insert(bookmarks, {
-            name = name,
-            path = normalized_path,
-            last_used = usage_stats[name] or 0,
-          })
+        local path, name = line:match('^(.+)|(.+)$')
+        if name and path then
+          path = path:gsub('%$HOME', vim.env.HOME)
+          local normalized_path = normalize_existing_dir(path)
+          if normalized_path then
+            table.insert(bookmarks, {
+              name = name,
+              path = normalized_path,
+              last_used = usage_stats[name] or 0,
+            })
+          end
         end
       end
 

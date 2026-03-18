@@ -21,19 +21,6 @@ M.base46 = {
 --      }
 --}
 
--- TODO override config
-if vim.env.NVIM_MINIMAL == nil then
-  -- Relative line numbers on file tree by default
-  require('nvim-tree').setup({
-    view = {relativenumber = true, width = 40},
-    renderer = {
-      full_name = true,
-    },
-    update_focused_file = {
-      enable = true,
-    },
-    update_cwd = true
-  })
-end
+-- nvim-tree setup moved to lua/plugins/ui.lua to allow lazy loading
 
 return M

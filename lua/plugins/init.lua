@@ -42,7 +42,7 @@ function GET_INIT_CONFIG()
       {
         "nvim-telescope/telescope-fzf-native.nvim",
         build = "make",
-        lazy = false,
+        lazy = true,
         config = function()
           require("telescope").load_extension("fzf")
 
