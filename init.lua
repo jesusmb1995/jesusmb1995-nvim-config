@@ -50,3 +50,45 @@ vim.schedule(function()
 end)
 
 vim.wo.relativenumber=true
+
+-- Register workspace in tmux warm daemon if .was_agent marker exists
+function _G.register_warm_workspace()
+  local root = vim.fn.getcwd()
+  if vim.fn.filereadable(root .. "/.was_agent") == 0 then return end
+
+  local ws_file = "/tmp/tmux_warm_agent_workspaces.json"
+  local workspaces = {}
+
+  local f = io.open(ws_file, "r")
+  if f then
+    local ok, decoded = pcall(vim.json.decode, f:read("*a"))
+    f:close()
+    if ok and type(decoded) == "table" then
+      workspaces = decoded
+    end
+  end
+
+  for _, path in ipairs(workspaces) do
+    if path == root then return end
+  end
+
+  table.insert(workspaces, root)
+  f = io.open(ws_file, "w")
+  if f then
+    f:write(vim.json.encode(workspaces))
+    f:close()
+  end
+
+  local pid = io.open("/tmp/tmux_warm_daemon.pid", "r")
+  if pid then
+    local daemon_pid = pid:read("*l")
+    pid:close()
+    if daemon_pid then
+      os.execute("kill -USR1 " .. daemon_pid .. " 2>/dev/null")
+    end
+  end
+end
+
+vim.api.nvim_create_autocmd({"VimEnter", "DirChanged"}, {
+  callback = register_warm_workspace,
+})
