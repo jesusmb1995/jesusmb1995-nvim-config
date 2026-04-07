@@ -1024,13 +1024,8 @@ if vim.env.NVIM_MINIMAL == nil then
 
   map("n", "<leader><C-l>", open_or_focus_agent_term, { desc = "Open/focus agent terminal" })
 
-  map("t", "<leader><C-l>", function()
-    if in_agent_term() then
-      require("nvchad.term").toggle { pos = "vsp", cmd = "agent", id = "agentTerm" }
-    else
-      open_or_focus_agent_term()
-    end
-  end, { desc = "Toggle agent terminal (close only from inside)" })
+  -- NOTE: <leader><C-l> removed from terminal mode because leader=<Space>
+  -- caused input delay. Use <C-x> to exit terminal mode, then <leader><C-l>.
 
   map("t", "<C-l>", function()
     if in_agent_term() then
@@ -1216,6 +1211,11 @@ if vim.env.NVIM_MINIMAL == nil then
         silent = true,
         nowait = true,
         desc = "Open terminal file reference in new tab",
+      })
+      vim.keymap.set("t", " ", " ", {
+        buffer = buf,
+        nowait = true,
+        desc = "Bypass leader timeout so space is sent immediately",
       })
     end,
   })

@@ -141,6 +141,8 @@ Stage hunk (custom mmap)| <leader>Hs
 ## Target runner
 run via .local_cmd_bookmarks (horizontal terminal) | <leader><A-h>
 run via .local_cmd_bookmarks (vertical terminal) | <leader><A-v>
+run via .local_cmd_bookmarks with dependencies (horizontal terminal) | <leader><A-h> + <C-d>
+run via .local_cmd_bookmarks with dependencies (vertical terminal) | <leader><A-v> + <C-d>
 CTest/GTest picker (save & run via .local_cmd_bookmarks) | <leader><A-H>
 CTest/GTest picker (vertical terminal) | <leader><A-V>
 ## Cursor AI editor

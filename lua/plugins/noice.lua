@@ -23,12 +23,34 @@ return {
   },
   {
     "nvim-tree/nvim-tree.lua",
-    opts = {
-      view = { relativenumber = true, width = 40 },
-      renderer = { full_name = true },
-      update_focused_file = { enable = true },
-      update_cwd = true,
-    },
+    opts = function(_, opts)
+      local image_exts = { png = true, jpg = true, jpeg = true, gif = true, bmp = true, svg = true, webp = true }
+
+      local function on_attach(bufnr)
+        local api = require "nvim-tree.api"
+        api.config.mappings.default_on_attach(bufnr)
+
+        vim.keymap.set("n", "<CR>", function()
+          local node = api.tree.get_node_under_cursor()
+          if node and node.type == "file" then
+            local ext = (node.name:match "%.(%w+)$" or ""):lower()
+            if image_exts[ext] then
+              vim.fn.jobstart({ "xdg-open", node.absolute_path }, { detach = true })
+              return
+            end
+          end
+          api.node.open.edit()
+        end, { buffer = bufnr, noremap = true, silent = true, desc = "Open file / xdg-open images" })
+      end
+
+      return vim.tbl_deep_extend("force", opts, {
+        view = { relativenumber = true, width = 40 },
+        renderer = { full_name = true },
+        update_focused_file = { enable = true },
+        update_cwd = true,
+        on_attach = on_attach,
+      })
+    end,
   },
   {
     "stevearc/dressing.nvim",
