@@ -17,6 +17,7 @@ return {
     "RemoteConfigDel",
     "RemoteLog",
     "RemoteAddSshConfig",
+    "RemoteStartTmux",
   },
   dependencies = {
     "nvim-lua/plenary.nvim",
@@ -32,14 +33,12 @@ return {
         },
         client_callback = function(port, _)
           local nvim_bin = vim.v.progpath or "nvim"
-          require("remote-nvim.ui").float_term(
-            ("%s --server localhost:%s --remote-ui"):format(nvim_bin, port),
-            function(exit_code)
-              if exit_code ~= 0 then
-                vim.notify(("Local client failed with exit code %s"):format(exit_code), vim.log.levels.ERROR)
-              end
+          local cmd = ("%s --server localhost:%s --remote-ui"):format(nvim_bin, port)
+          require("remote-nvim.ui").float_term(cmd, function(exit_code)
+            if exit_code ~= 0 then
+              vim.notify(("Local client failed with exit code %s"):format(exit_code), vim.log.levels.ERROR)
             end
-          )
+          end)
         end,
       })
 
@@ -118,18 +117,108 @@ return {
           local buf = vim.api.nvim_get_current_buf()
           if vim.bo[buf].buftype ~= "terminal" then return end
 
-          local passthrough_keys = { "<A-h>", "<A-v>", "<A-i>", "<C-n>" }
-          for _, key in ipairs(passthrough_keys) do
-            vim.keymap.set("t", key, function()
-              local raw = vim.api.nvim_replace_termcodes(key, true, false, true)
-              local chan = vim.b[buf].terminal_job_id
-              if chan then
-                vim.fn.chansend(chan, raw)
-              end
-            end, { buffer = buf, desc = "Passthrough " .. key .. " to remote nvim" })
+          local function send_to_remote(bytes)
+            local chan = vim.b[buf].terminal_job_id
+            if chan then vim.fn.chansend(chan, bytes) end
           end
+
+          local function map_passthrough(key, bytes)
+            vim.keymap.set("t", key, function() send_to_remote(bytes) end,
+              { buffer = buf, desc = "Passthrough " .. key .. " to remote nvim" })
+          end
+
+          -- Alt keys: terminal sends ESC + char
+          map_passthrough("<A-h>", "\x1bh")
+          map_passthrough("<A-v>", "\x1bv")
+          map_passthrough("<A-i>", "\x1bi")
+          map_passthrough("<A-l>", "\x1bl")
+
+          -- Ctrl keys
+          map_passthrough("<C-n>", "\x0e")
+          map_passthrough("<C-x>", "\x18")
+          map_passthrough("<C-a>", "\x01")
+
+          -- C-w sequences: send C-w then the next char
+          map_passthrough("<C-w>h", "\x17h")
+          map_passthrough("<C-w>j", "\x17j")
+          map_passthrough("<C-w>k", "\x17k")
+          map_passthrough("<C-w>l", "\x17l")
+          map_passthrough("<C-w>v", "\x17v")
+          map_passthrough("<C-w>s", "\x17s")
+          map_passthrough("<C-w>q", "\x17q")
+          map_passthrough("<C-w>o", "\x17o")
+          map_passthrough("<C-w><C-w>", "\x17\x17")
+
+          -- Function keys (standard xterm sequences)
+          map_passthrough("<F4>", "\x1b[14~")
+          map_passthrough("<F7>", "\x1b[18~")
+          map_passthrough("<F8>", "\x1b[19~")
+          map_passthrough("<F9>", "\x1b[20~")
+
+          -- <C-\><C-n> can't be overridden (hardcoded by nvim to exit terminal mode).
+
+          -- <C-\><C-t>: move this remote session to a tmux window and close the float.
+          vim.keymap.set("t", "<C-\\><C-t>", function()
+            local nvim_bin = vim.v.progpath or "nvim"
+            local rn = require("remote-nvim")
+            if not rn or not rn.session_provider then return end
+            for host_id, provider in pairs(rn.session_provider:get_all_sessions()) do
+              local port = provider:get_local_neovim_server_port()
+              if port then
+                local tmux_cmd = ("%s --server localhost:%s --remote-ui"):format(nvim_bin, port)
+                vim.fn.system(("tmux new-window -n 'remote:%s' '%s'"):format(host_id, tmux_cmd))
+                vim.notify(("Moved to tmux window: %s"):format(host_id), vim.log.levels.INFO)
+                -- Close the float by exiting terminal mode and closing window
+                vim.cmd("stopinsert")
+                vim.defer_fn(function()
+                  local win = vim.api.nvim_get_current_win()
+                  pcall(vim.api.nvim_win_close, win, true)
+                end, 100)
+                return
+              end
+            end
+          end, { buffer = buf, desc = "Move remote nvim to tmux window" })
         end)
       end
+
+      -- :RemoteStartTmux — open remote nvim in a separate tmux window for full key access
+      vim.api.nvim_create_user_command("RemoteStartTmux", function()
+        local nvim_bin = vim.v.progpath or "nvim"
+        local rn = require("remote-nvim")
+        if not rn or not rn.session_provider then
+          vim.notify("remote-nvim not loaded. Run :RemoteStart first.", vim.log.levels.WARN)
+          return
+        end
+
+        local ports = {}
+        local labels = {}
+        for host_id, provider in pairs(rn.session_provider:get_all_sessions()) do
+          local port = provider:get_local_neovim_server_port()
+          if port then
+            table.insert(ports, { host_id = host_id, port = port })
+            table.insert(labels, ("%s (localhost:%s)"):format(host_id, port))
+          end
+        end
+
+        if #ports == 0 then
+          vim.notify("No active remote session found. Run :RemoteStart first.", vim.log.levels.WARN)
+          return
+        end
+
+        local function open_in_tmux(entry)
+          local cmd = ("%s --server localhost:%s --remote-ui"):format(nvim_bin, entry.port)
+          vim.fn.system(("tmux new-window -n 'remote:%s' '%s'"):format(entry.host_id, cmd))
+          vim.notify(("Remote nvim in tmux window: %s (localhost:%s)"):format(entry.host_id, entry.port), vim.log.levels.INFO)
+        end
+
+        if #ports == 1 then
+          open_in_tmux(ports[1])
+        else
+          vim.ui.select(labels, { prompt = "Select remote session:" }, function(_, idx)
+            if idx then open_in_tmux(ports[idx]) end
+          end)
+        end
+      end, { desc = "Open remote nvim TUI in a separate tmux window" })
     end
 
     local function parse_ssh_command(cmd)

@@ -90,6 +90,9 @@ Open plugin log file | :RemoteLog
 Validate remote-nvim dependencies | :checkhealth remote-nvim
 Add SSH host to ~/.ssh/config (with confirmation) | :RemoteAddSshConfig ssh -i $HOME/.ssh/id_ed25519_signing dev@100.104.80.84
 You can include port or custom alias too | :RemoteAddSshConfig ssh -i $HOME/.ssh/id_ed25519_signing -p 2222 dev@100.104.80.84 --alias devbox
+Open remote nvim in separate tmux window (full key access) | :RemoteStartTmux
+Move remote TUI float to tmux window (from inside float) | <C-\><C-t>
+Exit remote TUI float (back to local nvim) | <C-\><C-n> then :q
 
 ## LSP
 Go to definition | gd
