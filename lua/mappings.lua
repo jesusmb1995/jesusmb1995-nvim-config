@@ -1057,6 +1057,9 @@ if vim.env.NVIM_MINIMAL == nil then
     end
   end, { desc = "Clear agent conversation (new chat)" })
 
+  map("n", "<C-x>", "<Nop>")
+  map("n", "<C-a>", "<Nop>")
+
   map("n", "<F4>", ":%bd|e#<CR>", { desc = "Close all buffers except current" })
 
   -- TODO shorcut close all windows except :only the editor ones
