@@ -80,6 +80,17 @@ Telescope symbols (dynamic) | <leader>ts
 Quick fix on results (e.g. live grep) | <C-q>
 Replace in quick fix | :cfdo %s/replace/by
 Find marks | <leader>ma
+## Remote nvim
+Connect to a remote instance | :RemoteStart
+Stop running Neovim server and close session | :RemoteStop
+Get information about sessions in current Neovim run | :RemoteInfo
+Delete remote workspace/setup for a session | :RemoteCleanup
+Delete saved record of a remote instance | :RemoteConfigDel
+Open plugin log file | :RemoteLog
+Validate remote-nvim dependencies | :checkhealth remote-nvim
+Add SSH host to ~/.ssh/config (with confirmation) | :RemoteAddSshConfig ssh -i $HOME/.ssh/id_ed25519_signing dev@100.104.80.84
+You can include port or custom alias too | :RemoteAddSshConfig ssh -i $HOME/.ssh/id_ed25519_signing -p 2222 dev@100.104.80.84 --alias devbox
+
 ## LSP
 Go to definition | gd
 References | gr

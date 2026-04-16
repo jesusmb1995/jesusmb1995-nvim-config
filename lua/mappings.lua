@@ -1051,6 +1051,9 @@ if vim.env.NVIM_MINIMAL == nil then
   end, { desc = "Send file reference to agent terminal" })
 
   map("t", "<C-n>", function()
+    if not in_agent_term() then
+      return vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<C-n>", true, false, true), "n", false)
+    end
     local chan = vim.b.terminal_job_id
     if chan then
       vim.fn.chansend(chan, "/clear")
