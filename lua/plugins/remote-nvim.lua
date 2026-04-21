@@ -11,6 +11,7 @@ return {
   end,
   cmd = {
     "RemoteStart",
+    "RemoteStartQuick",
     "RemoteStop",
     "RemoteInfo",
     "RemoteCleanup",
@@ -219,6 +220,86 @@ return {
           end)
         end
       end, { desc = "Open remote nvim TUI in a separate tmux window" })
+
+      -- :RemoteStartQuick — like :RemoteStart but skips interactive prompts:
+      --   * "Copy local Neovim configuration to remote host?"  -> No (assume up-to-date)
+      --   * "Launch local Neovim client?"                      -> Yes
+      -- Accepts an optional host identifier (same completion as :RemoteStart).
+      -- Without an argument, shows a vim.ui.select picker over existing workspaces.
+      local devpod_utils_ok, devpod_utils = pcall(require, "remote-nvim.providers.devpod.devpod_utils")
+      if not devpod_utils_ok then devpod_utils = nil end
+
+      local function launch_quick(host_identifier)
+        local config_provider = remote_nvim.session_provider:get_config_provider()
+        local workspace_config = config_provider:get_workspace_config(host_identifier)
+        if not workspace_config or vim.tbl_isempty(workspace_config) then
+          vim.notify(
+            ("Unknown host identifier: %s. Run :RemoteStart to connect to a new host."):format(host_identifier),
+            vim.log.levels.ERROR
+          )
+          return
+        end
+
+        local session = remote_nvim.session_provider:get_or_initialize_session({
+          host = workspace_config.host,
+          provider_type = workspace_config.provider,
+          conn_opts = { workspace_config.connection_options },
+          unique_host_id = host_identifier,
+          devpod_opts = devpod_utils and devpod_utils.get_workspace_devpod_opts(workspace_config) or nil,
+        })
+
+        -- Per-instance overrides: skip the two interactive prompts.
+        -- Copy-config: assume already up-to-date -> No.
+        session._get_neovim_config_upload_preference = function() return false end
+        -- Launch local client: Yes.
+        session._get_local_client_start_preference = function() return true end
+
+        session:launch_neovim()
+      end
+
+      vim.api.nvim_create_user_command("RemoteStartQuick", function(opts)
+        local host_identifier = vim.trim(opts.args or "")
+        if host_identifier ~= "" then
+          launch_quick(host_identifier)
+          return
+        end
+
+        local config_provider = remote_nvim.session_provider:get_config_provider()
+        local all = config_provider:get_workspace_config()
+        local host_ids = vim.tbl_keys(all)
+        if #host_ids == 0 then
+          vim.notify(
+            "No saved workspaces. Run :RemoteStart to connect to a new host first.",
+            vim.log.levels.WARN
+          )
+          return
+        end
+        table.sort(host_ids)
+
+        local labels = {}
+        for _, id in ipairs(host_ids) do
+          local wc = all[id] or {}
+          local provider_type = wc.provider or "?"
+          table.insert(labels, ("%s  [%s]"):format(id, provider_type))
+        end
+
+        vim.ui.select(labels, { prompt = "Quick-start remote session:" }, function(_, idx)
+          if idx then launch_quick(host_ids[idx]) end
+        end)
+      end, {
+        nargs = "?",
+        desc = "Start remote Neovim skipping copy/launch prompts (copy=No, launch=Yes)",
+        complete = function(_, line)
+          local args = vim.split(vim.trim(line), "%s+")
+          table.remove(args, 1)
+          local valid_hosts =
+            vim.tbl_keys(remote_nvim.session_provider:get_config_provider():get_workspace_config())
+          if #args == 0 or args[1] == "" then
+            return valid_hosts
+          end
+          return vim.fn.matchfuzzy(valid_hosts, args[1])
+        end,
+      })
     end
 
     local function parse_ssh_command(cmd)

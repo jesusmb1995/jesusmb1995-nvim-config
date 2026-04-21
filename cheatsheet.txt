@@ -82,6 +82,7 @@ Replace in quick fix | :cfdo %s/replace/by
 Find marks | <leader>ma
 ## Remote nvim
 Connect to a remote instance | :RemoteStart
+Connect to a remote instance (skip prompts: copy=No, launch=Yes) | :RemoteStartQuick [host-id]
 Stop running Neovim server and close session | :RemoteStop
 Get information about sessions in current Neovim run | :RemoteInfo
 Delete remote workspace/setup for a session | :RemoteCleanup
