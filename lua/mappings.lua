@@ -226,7 +226,53 @@ if vim.env.NVIM_MINIMAL == nil then
   map("n", "<leader>gl", ":Neogit log<CR>", { desc = "Git Log" })
   map("n", "<leader>gz", ":Neogit stash<CR>", { desc = "Git Stash" })
   map("n", "<leader>gp", ":Neogit pull<CR>", { desc = "Git pull" })
-  map("n", "<leader>gP", ":Neogit push<CR>", { desc = "Git Push" })
+  map("n", "<leader>gP", function()
+    local root = vim.fn.systemlist("git rev-parse --show-toplevel 2>/dev/null")[1]
+    if vim.v.shell_error ~= 0 or not root or root == "" then
+      vim.notify("Not inside a git repository", vim.log.levels.ERROR)
+      return
+    end
+
+    local git = "git -C " .. vim.fn.shellescape(root) .. " "
+    local branch = vim.fn.systemlist(git .. "branch --show-current 2>/dev/null")[1]
+    if vim.v.shell_error ~= 0 or not branch or branch == "" then
+      vim.cmd "Neogit push"
+      return
+    end
+
+    local upstream = vim.fn.systemlist(git .. "rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null")[1]
+    if vim.v.shell_error ~= 0 or not upstream or upstream == "" then
+      vim.cmd "Neogit push"
+      return
+    end
+
+    local upstream_branch = upstream:match("^[^/]+/(.+)$") or upstream
+    if upstream_branch == branch then
+      vim.cmd "Neogit push"
+      return
+    end
+
+    vim.ui.select({
+      "Unset upstream, then push",
+      "Push without changing upstream",
+      "Cancel",
+    }, {
+      prompt = ("Upstream is %s, current branch is %s"):format(upstream, branch),
+    }, function(choice)
+      if choice == "Unset upstream, then push" then
+        vim.fn.system(git .. "branch --unset-upstream 2>/dev/null")
+        if vim.v.shell_error ~= 0 then
+          vim.notify("Failed to unset upstream", vim.log.levels.ERROR)
+          return
+        end
+
+        vim.notify("Unset upstream for " .. branch, vim.log.levels.INFO)
+        vim.cmd "Neogit push"
+      elseif choice == "Push without changing upstream" then
+        vim.cmd "Neogit push"
+      end
+    end)
+  end, { desc = "Git Push" })
   map("n", "<leader>gr", ":Neogit rebase<CR>", { desc = "Git Rebase" })
   map("n", "<leader>grb", function()
     local root = vim.fn.systemlist("git rev-parse --show-toplevel 2>/dev/null")[1]
