@@ -274,6 +274,12 @@ if vim.env.NVIM_MINIMAL == nil then
     end)
   end, { desc = "Git Push" })
   map("n", "<leader>gr", ":Neogit rebase<CR>", { desc = "Git Rebase" })
+  local function is_stg_branch()
+    local stg_path = "/home/linuxbrew/.linuxbrew/bin/stg"
+    local patch_count = tonumber(vim.fn.trim(vim.fn.system(stg_path .. " series --count 2>/dev/null"))) or 0
+    return patch_count > 0
+  end
+
   map("n", "<leader>grb", function()
     local root = vim.fn.systemlist("git rev-parse --show-toplevel 2>/dev/null")[1]
     if vim.v.shell_error ~= 0 or not root then
@@ -287,11 +293,8 @@ if vim.env.NVIM_MINIMAL == nil then
       return
     end
 
-    local stg_path = "/home/linuxbrew/.linuxbrew/bin/stg"
-    local patch_count = tonumber(vim.fn.trim(vim.fn.system(stg_path .. " series --count 2>/dev/null"))) or 0
-    local is_stg = patch_count > 0
-
-    if is_stg then
+    if is_stg_branch() then
+      local stg_path = "/home/linuxbrew/.linuxbrew/bin/stg"
       local cmd = stg_path .. " rebase upstream/main"
       vim.notify("Running: stg rebase upstream/main", vim.log.levels.INFO)
       require("nvchad.term").runner { pos = "sp", cmd = cmd, id = "htoggleTerm", clear_cmd = false }
@@ -301,6 +304,31 @@ if vim.env.NVIM_MINIMAL == nil then
       require("nvchad.term").runner { pos = "sp", cmd = cmd, id = "htoggleTerm", clear_cmd = false }
     end
   end, { desc = "Rebase upstream/main (stg if stg branch, else git)" })
+
+  map("n", "<leader>gri", function()
+    local root = vim.fn.systemlist("git rev-parse --show-toplevel 2>/dev/null")[1]
+    if vim.v.shell_error ~= 0 or not root then
+      vim.notify("Not inside a git repository", vim.log.levels.ERROR)
+      return
+    end
+
+    vim.fn.system("git rev-parse --verify upstream/main 2>/dev/null")
+    if vim.v.shell_error ~= 0 then
+      vim.notify("upstream/main does not exist", vim.log.levels.ERROR)
+      return
+    end
+
+    if is_stg_branch() then
+      local stg_path = "/home/linuxbrew/.linuxbrew/bin/stg"
+      local cmd = stg_path .. " rebase -i upstream/main"
+      vim.notify("Running: stg rebase -i upstream/main", vim.log.levels.INFO)
+      require("nvchad.term").runner { pos = "sp", cmd = cmd, id = "htoggleTerm", clear_cmd = false }
+    else
+      local cmd = "git rebase -i upstream/main"
+      vim.notify("Running: git rebase -i upstream/main", vim.log.levels.INFO)
+      require("nvchad.term").runner { pos = "sp", cmd = cmd, id = "htoggleTerm", clear_cmd = false }
+    end
+  end, { desc = "Interactive rebase upstream/main (stg if stg branch, else git)" })
   map("n", "<leader>gf", ":Neogit fetch<CR>", { desc = "Git Fetch" })
   map("n", "<A-l>", function()
     local gitsigns = require("gitsigns")
@@ -1029,6 +1057,17 @@ if vim.env.NVIM_MINIMAL == nil then
     end
   end
 
+  local _agent_cli_tool = nil
+  local function get_agent_cli_tool()
+    if _agent_cli_tool then return _agent_cli_tool end
+    local tool = vim.fn.system("bash -c 'source ~/.aliases 2>/dev/null && kv agentclitool 2>/dev/null'"):gsub("%s+", "")
+    if tool == "" then
+      tool = "agent"
+    end
+    _agent_cli_tool = tool
+    return tool
+  end
+
   local function open_or_focus_agent_term()
     ensure_is_agent_marker()
     local term = find_agent_term()
@@ -1049,7 +1088,7 @@ if vim.env.NVIM_MINIMAL == nil then
       if vim.v.shell_error == 0 then
         cmd = "env -u TMUX tmux attach -t " .. session
       else
-        cmd = "agent"
+        cmd = get_agent_cli_tool()
       end
       require("nvchad.term").toggle { pos = "vsp", cmd = cmd, id = "agentTerm" }
     end
@@ -1075,7 +1114,7 @@ if vim.env.NVIM_MINIMAL == nil then
 
   map("t", "<C-l>", function()
     if in_agent_term() then
-      require("nvchad.term").toggle { pos = "vsp", cmd = "agent", id = "agentTerm" }
+      require("nvchad.term").toggle { pos = "vsp", cmd = get_agent_cli_tool(), id = "agentTerm" }
     end
   end, { desc = "Close agent terminal from inside" })
 
