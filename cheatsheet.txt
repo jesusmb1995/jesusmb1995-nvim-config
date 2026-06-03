@@ -175,3 +175,9 @@ Attach file to chat | <C-S-l>
 Close agent terminal (from inside) | <C-l>
 Send visual selection as @file:lines ref | <C-l> (visual mode)
 Clear agent terminal output | <C-n><carriage return>
+## Claude agent terminal inside neovim 
+Enter transcript mode to move with jk | <C-o>
+## Vimium (browser)
+Yank/copy link | yf
+Click | f
+Open new tab | <S-f>
