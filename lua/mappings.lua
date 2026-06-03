@@ -782,6 +782,157 @@ if vim.env.NVIM_MINIMAL == nil then
     }):start()
   end, { desc = "Create worktree for branch → new nvim instance" })
 
+  -- <leader>gwp: pick an open PR from upstream/origin and create a worktree from it.
+  -- Fetches refs/pull/<num>/head into local branch pr-<num>, then worktrees to
+  -- ../<repo-name>-pr-<num> and cds into it.
+  map("n", "<leader>gwp", function()
+    local Job = require("plenary.job")
+    local notify = vim.notify
+
+    if vim.fn.executable("gh") ~= 1 then
+      notify("`gh` CLI not found in PATH", vim.log.levels.ERROR)
+      return
+    end
+
+    local root = git_root()
+    if not root then
+      notify("Not inside a Git repository", vim.log.levels.ERROR)
+      return
+    end
+    local repo_name = vim.fn.fnamemodify(root, ":t")
+
+    -- pick remote: prefer upstream, fallback origin
+    local remotes = vim.fn.systemlist({ "git", "-C", root, "remote" })
+    local remote = nil
+    for _, r in ipairs(remotes or {}) do
+      if vim.trim(r) == "upstream" then remote = "upstream"; break end
+    end
+    if not remote then
+      for _, r in ipairs(remotes or {}) do
+        if vim.trim(r) == "origin" then remote = "origin"; break end
+      end
+    end
+    if not remote then
+      notify("No `upstream` or `origin` remote configured", vim.log.levels.ERROR)
+      return
+    end
+
+    notify("Listing open PRs from " .. remote .. "…", vim.log.levels.INFO)
+
+    Job:new({
+      command = "gh",
+      args = { "pr", "list", "--limit", "200", "--state", "open",
+               "--json", "number,title,author,headRefName,isCrossRepository,headRepositoryOwner" },
+      cwd = root,
+      on_exit = function(j, code)
+        vim.schedule(function()
+          if code ~= 0 then
+            notify("gh pr list failed: " .. table.concat(j:stderr_result(), " "), vim.log.levels.ERROR)
+            return
+          end
+          local raw = table.concat(j:result(), "\n")
+          local ok, prs = pcall(vim.json.decode, raw)
+          if not ok or type(prs) ~= "table" or #prs == 0 then
+            notify("No open PRs found", vim.log.levels.INFO)
+            return
+          end
+
+          local items = {}
+          for _, pr in ipairs(prs) do
+            local login = (pr.author and pr.author.login) or "?"
+            local cross = pr.isCrossRepository
+                and (" [" .. ((pr.headRepositoryOwner and pr.headRepositoryOwner.login) or "fork") .. "]")
+                or ""
+            local display = string.format("#%-5d %s  (@%s)%s", pr.number, pr.title or "", login, cross)
+            table.insert(items, { number = pr.number, title = pr.title or "", display = display })
+          end
+
+          local function do_checkout(item)
+            local num = item.number
+            local local_branch = "pr-" .. num
+            local parent_dir = vim.fn.fnamemodify(root, ":h")
+            local worktree_dir = parent_dir .. "/" .. repo_name .. "-pr-" .. num
+
+            local all_wts = git_worktree_list()
+            for _, wt_path in ipairs(all_wts or {}) do
+              if vim.fn.fnamemodify(wt_path, ":p") == vim.fn.fnamemodify(worktree_dir, ":p") then
+                notify("Worktree already exists at: " .. worktree_dir, vim.log.levels.INFO)
+                local target = worktree_cd_target(worktree_dir)
+                vim.cmd("cd " .. vim.fn.fnameescape(target))
+                notify("Changed directory to: " .. target, vim.log.levels.INFO)
+                return
+              end
+            end
+
+            notify("Fetching PR #" .. num .. " from " .. remote .. "…", vim.log.levels.INFO)
+            Job:new({
+              command = "git",
+              args = { "fetch", remote,
+                       "+refs/pull/" .. num .. "/head:refs/heads/" .. local_branch },
+              cwd = root,
+              on_exit = function(jf, fcode)
+                vim.schedule(function()
+                  if fcode ~= 0 then
+                    notify("Fetch failed: " .. table.concat(jf:stderr_result(), " "), vim.log.levels.ERROR)
+                    return
+                  end
+                  Job:new({
+                    command = "git",
+                    args = { "worktree", "add", worktree_dir, local_branch },
+                    cwd = root,
+                    on_exit = function(jw, wcode)
+                      vim.schedule(function()
+                        if wcode ~= 0 then
+                          notify("worktree add failed: " .. table.concat(jw:stderr_result(), " "), vim.log.levels.ERROR)
+                          return
+                        end
+                        notify("Worktree created: " .. worktree_dir, vim.log.levels.INFO)
+                        local target = worktree_cd_target(worktree_dir)
+                        vim.cmd("cd " .. vim.fn.fnameescape(target))
+                        notify("Changed directory to: " .. target, vim.log.levels.INFO)
+                      end)
+                    end,
+                  }):start()
+                end)
+              end,
+            }):start()
+          end
+
+          local tel_ok = pcall(require, "telescope")
+          if tel_ok then
+            require("telescope.pickers").new({}, {
+              prompt_title = "Open PRs (" .. remote .. ") — Enter to checkout as worktree",
+              finder = require("telescope.finders").new_table({
+                results = items,
+                entry_maker = function(e)
+                  return { value = e, display = e.display, ordinal = e.display }
+                end,
+              }),
+              sorter = require("telescope.config").values.generic_sorter({}),
+              attach_mappings = function(prompt_bufnr)
+                local actions = require("telescope.actions")
+                local state = require("telescope.actions.state")
+                actions.select_default:replace(function()
+                  local sel = state.get_selected_entry()
+                  actions.close(prompt_bufnr)
+                  if sel then do_checkout(sel.value) end
+                end)
+                return true
+              end,
+            }):find()
+          else
+            vim.ui.select(items, {
+              prompt = "Select PR to create worktree:",
+              format_item = function(i) return i.display end,
+            }, function(choice)
+              if choice then do_checkout(choice) end
+            end)
+          end
+        end)
+      end,
+    }):start()
+  end, { desc = "Create worktree from selected open PR (gh)" })
+
   -- CTest / GTest picker: find build dir, list ctest tests + gtest suites/cases,
   -- show in Telescope, save selected command to .local_cmd_bookmarks and run it.
   -- <C-f> in prompt: use typed text as *text* gtest wildcard on highlighted item's binary.
