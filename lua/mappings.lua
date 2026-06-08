@@ -1243,8 +1243,11 @@ if vim.env.NVIM_MINIMAL == nil then
   local _agent_cli_tool = nil
   local function get_agent_cli_tool()
     if _agent_cli_tool then return _agent_cli_tool end
-    local tool = vim.fn.system("bash -c 'source ~/.aliases 2>/dev/null && kv agentclitool 2>/dev/null'"):gsub("%s+", "")
+    local cmd = "bash -c 'source ~/.aliases 2>/dev/null && kv agentclitool 2>/dev/null'"
+    local raw = vim.fn.system(cmd)
+    local tool = raw:gsub("%s+", "")
     if tool == "" then
+      vim.notify("agentclitool returned empty. Command: " .. cmd .. "\nOutput: " .. raw, vim.log.levels.WARN, { title = "get_agent_cli_tool" })
       tool = "claude"
     end
     _agent_cli_tool = tool
