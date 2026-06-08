@@ -1155,9 +1155,41 @@ if vim.env.NVIM_MINIMAL == nil then
     end
   end
 
+  -- Combined function: execute shell script if applicable, else run ctest picker
+  local function exec_shell_or_ctest(pos, term_id)
+    local filepath = vim.fn.expand("%:p")
+    local ext = vim.fn.expand("%:e")
+    local shell_extensions = { sh = true, bash = true, zsh = true, fish = true, ksh = true }
+
+    if shell_extensions[ext] then
+      -- Execute shell script from git worktree root
+      local git_root_lines = vim.fn.systemlist("git rev-parse --show-toplevel 2>/dev/null")
+      if vim.v.shell_error ~= 0 or not git_root_lines or #git_root_lines == 0 then
+        vim.notify("Not in a git repository", vim.log.levels.ERROR)
+        return
+      end
+      local git_root = vim.trim(git_root_lines[1])
+
+      -- Make script executable if needed
+      local stat = vim.loop.fs_stat(filepath)
+      if stat and bit.band(stat.mode, 0x40) == 0 then
+        vim.fn.system("chmod +x " .. vim.fn.shellescape(filepath))
+      end
+
+      -- Run script from git root in the terminal (same mechanism as ctest picker)
+      local script_rel = filepath:sub(#git_root + 2)
+      local cmd = "cd " .. vim.fn.shellescape(git_root) .. " && ./" .. vim.fn.shellescape(script_rel)
+      require("nvchad.term").runner { pos = pos, cmd = cmd, id = term_id, clear_cmd = false }
+      vim.notify("Running: " .. cmd, vim.log.levels.INFO)
+    else
+      -- Fall back to ctest picker
+      ctest_gtest_picker(pos, term_id)
+    end
+  end
+
   map("n", "<leader><A-H>", function()
-    ctest_gtest_picker("sp", "htoggleTerm")
-  end, { desc = "CTest / GTest picker — horizontal terminal" })
+    exec_shell_or_ctest("sp", "htoggleTerm")
+  end, { desc = "Execute shell script or CTest picker — horizontal" })
 
   map("n", "<leader><A-V>", function()
     ctest_gtest_picker("vsp", "vtoggleTerm")
