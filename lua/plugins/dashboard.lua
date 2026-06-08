@@ -25,6 +25,12 @@ return {
         end
       end
 
+      local readme = normalized_root .. '/README.md'
+      if vim.fn.filereadable(readme) == 1 then
+        vim.cmd('edit ' .. vim.fn.fnameescape(readme))
+        return
+      end
+
       vim.notify('No recent file found for ' .. normalized_root, vim.log.levels.INFO)
     end
 
