@@ -1245,7 +1245,7 @@ if vim.env.NVIM_MINIMAL == nil then
     if _agent_cli_tool then return _agent_cli_tool end
     local tool = vim.fn.system("bash -c 'source ~/.aliases 2>/dev/null && kv agentclitool 2>/dev/null'"):gsub("%s+", "")
     if tool == "" then
-      tool = "agent"
+      tool = "claude"
     end
     _agent_cli_tool = tool
     return tool
