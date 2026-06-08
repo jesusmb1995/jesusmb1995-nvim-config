@@ -148,6 +148,7 @@ Empty current patch but keep changes locally (spill) | <leader>gku
 Select and cd to git worktree | <leader>gwg
 Create worktree for branch and cd to it | <leader>gwc
 Remove all clean git worktrees | <leader>gwx
+Workspace from git PR | <leader>gwp", function()
 ## Aliases (.aliases)
 Stage all conflicts as resolved (alias) | git-resolve 
 Stage all conflicts as resolved and refresh (alias) | stg-resolve 
