@@ -61,6 +61,8 @@ Toggle string filter | <leader>fM
 Open with system (e.g. image or folder explorer) | s
 Increase window width | <C-A-S-Right>
 Decrease window width | <C-A-S-Left>
+Copy path to command line (e.g to easy cd) at current cursor | .
+CD to current cursor dir tree | .cd<enter>
 ## No-neck-pain
 Center (with no neck pain) | <leader>np
 ## Profiler
