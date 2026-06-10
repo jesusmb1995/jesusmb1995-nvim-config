@@ -137,6 +137,7 @@ Activate git conflict plugin | :GitConflictRefresh
 Show git conflict list | :GitConflictListQf
 Activate git conflict plugin | <leader>gcr
 Show git conflict list | <leader>gcl
+Show git conflict list for ALL files (incl. unopened) | <leader>gcL
 Resolve conflict choosing current/ours | <leader>gco
 Resolve conflict choosing  incoming/theirs | <leader>gct
 Next git conflict | <leader>]x
