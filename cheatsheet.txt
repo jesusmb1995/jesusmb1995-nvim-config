@@ -164,6 +164,9 @@ run via .local_cmd_bookmarks with dependencies (horizontal terminal) | <leader><
 run via .local_cmd_bookmarks with dependencies (vertical terminal) | <leader><A-v> + <C-d>
 CTest/GTest picker (save & run via .local_cmd_bookmarks) | <leader><A-H>
 CTest/GTest picker (vertical terminal) | <leader><A-V>
+CTest picker: run prompt text as glob (--gtest_filter=*text*, spans all matching tests) | type text + <C-f>
+CTest picker: glob runs on HIGHLIGHTED entry's binary only (highlight right [CTEST] first) | <C-f>
+CTest picker: multiple glob groups at once (Foo:Bar -> *Foo*:Bar*) | type Foo:Bar + <C-f>
 ## Cursor AI editor
 Next review | <Alt-l>
 Accept review | <Ctrl-y>
