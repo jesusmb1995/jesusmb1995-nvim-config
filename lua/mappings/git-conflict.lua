@@ -1,0 +1,37 @@
+vim.keymap.set("n", "<leader>gcr", ":GitConflictRefresh<CR>",  { desc = "Activate git conflict plugin" } )
+vim.keymap.set("n", "<leader>gcl", ":GitConflictListQf<CR>",  { desc = "Show git conflict list" } )
+vim.keymap.set("n", "<leader>gcL", function()
+  local root = vim.fn.systemlist("git rev-parse --show-toplevel")[1]
+  if vim.v.shell_error ~= 0 or not root or root == "" then
+    vim.notify("Not in a git repository", vim.log.levels.ERROR)
+    return
+  end
+  local files = vim.fn.systemlist(
+    "git -C " .. vim.fn.shellescape(root) .. " diff --name-only --diff-filter=U")
+  if vim.v.shell_error ~= 0 or #files == 0 then
+    vim.notify("No conflicted files", vim.log.levels.INFO)
+    return
+  end
+  local items = {}
+  for _, rel in ipairs(files) do
+    local path = root .. "/" .. rel
+    local ok, lines = pcall(vim.fn.readfile, path)
+    if ok then
+      for lnum, line in ipairs(lines) do
+        if line:match("^<<<<<<<") then
+          table.insert(items, { filename = path, lnum = lnum, text = line })
+        end
+      end
+    end
+  end
+  if #items == 0 then
+    vim.notify("No conflict markers found", vim.log.levels.INFO)
+    return
+  end
+  vim.fn.setqflist({}, " ", { title = "Git conflicts (all files)", items = items })
+  vim.cmd("copen")
+end, { desc = "Show git conflict list (all files, incl. unopened)" })
+vim.keymap.set("n", "<leader>gco", ":GitConflictChooseOurs<CR>",  { desc = "Resolve conflict choosing current/ours" } )
+vim.keymap.set("n", "<leader>gcb", ":GitConflictChooseBoth<CR>",  { desc = "Resolve conflict choosing both" } )
+vim.keymap.set("n", "<leader>gcn", ":GitConflictChooseNone<CR>",  { desc = "Resolve conflict choosing none" } )
+vim.keymap.set("n", "<leader>gct", ":GitConflictChooseTheirs<CR>",  { desc = "Resolve conflict choosing  incoming/theirs" } )

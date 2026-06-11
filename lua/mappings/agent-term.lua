@@ -1,0 +1,115 @@
+local map = vim.keymap.set
+
+local function find_agent_term()
+  for _, opts in pairs(vim.g.nvchad_terms or {}) do
+    if opts and opts.id == "agentTerm" then
+      return opts
+    end
+  end
+  return nil
+end
+
+local function in_agent_term()
+  local term = find_agent_term()
+  return term ~= nil and term.buf == vim.api.nvim_get_current_buf()
+end
+
+local function ensure_is_agent_marker()
+  local marker = vim.fn.getcwd() .. "/.was_agent"
+  if vim.fn.filereadable(marker) == 0 then
+    local f = io.open(marker, "w")
+    if f then f:close() end
+    _G.register_warm_workspace()
+  end
+end
+
+local _agent_cli_tool = nil
+local function get_agent_cli_tool()
+  if _agent_cli_tool then return _agent_cli_tool end
+  local cmd = "bash -c 'source ~/.aliases 2>/dev/null && kv agentclitool 2>/dev/null'"
+  local raw = vim.fn.system(cmd)
+  local tool = raw:gsub("%s+", "")
+  if tool == "" then
+    vim.notify("agentclitool returned empty. Command: " .. cmd .. "\nOutput: " .. raw, vim.log.levels.WARN, { title = "get_agent_cli_tool" })
+    tool = "claude"
+  end
+  _agent_cli_tool = tool
+  return tool
+end
+
+local function open_or_focus_agent_term()
+  ensure_is_agent_marker()
+  local term = find_agent_term()
+  if term and vim.api.nvim_buf_is_valid(term.buf) then
+    local win_id = vim.fn.bufwinid(term.buf)
+    if win_id ~= -1 then
+      vim.api.nvim_set_current_win(win_id)
+      vim.cmd "startinsert"
+    else
+      require("nvchad.term").toggle { pos = "vsp", id = "agentTerm" }
+    end
+  else
+    local root = vim.fn.shellescape(vim.fn.getcwd())
+    local hash = vim.fn.system("printf '%s' " .. root .. " | md5sum | cut -c1-8"):gsub("%s+", "")
+    local session = "agent@" .. hash
+    vim.fn.system("tmux has-session -t " .. session .. " 2>/dev/null")
+    local cmd
+    if vim.v.shell_error == 0 then
+      cmd = "env -u TMUX tmux attach -t " .. session
+    else
+      cmd = get_agent_cli_tool()
+    end
+    require("nvchad.term").toggle { pos = "vsp", cmd = cmd, id = "agentTerm" }
+  end
+end
+
+local function send_to_agent(text)
+  open_or_focus_agent_term()
+  vim.schedule(function()
+    local term = find_agent_term()
+    if term and term.buf and vim.api.nvim_buf_is_valid(term.buf) then
+      local job_id = vim.b[term.buf].terminal_job_id
+      if job_id then
+        vim.api.nvim_chan_send(job_id, text)
+      end
+    end
+  end)
+end
+
+map("n", "<leader><C-l>", open_or_focus_agent_term, { desc = "Open/focus agent terminal" })
+
+-- NOTE: <leader><C-l> removed from terminal mode because leader=<Space>
+-- caused input delay. Use <C-x> to exit terminal mode, then <leader><C-l>.
+
+map("t", "<C-l>", function()
+  if in_agent_term() then
+    require("nvchad.term").toggle { pos = "vsp", cmd = get_agent_cli_tool(), id = "agentTerm" }
+  end
+end, { desc = "Close agent terminal from inside" })
+
+map("v", "<C-l>", function()
+  local start_line = vim.fn.line "v"
+  local end_line = vim.fn.line "."
+  if start_line > end_line then
+    start_line, end_line = end_line, start_line
+  end
+  local file = vim.fn.expand "%:."
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "x", false)
+  send_to_agent("@" .. file .. ":" .. start_line .. "-" .. end_line .. " ")
+end, { desc = "Send file section reference to agent terminal" })
+
+map("n", "<C-S-l>", function()
+  local file = vim.fn.expand "%:."
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "x", false)
+  send_to_agent("@" .. file .. " ")
+end, { desc = "Send file reference to agent terminal" })
+
+map("t", "<C-n>", function()
+  if not in_agent_term() then
+    return vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<C-n>", true, false, true), "n", false)
+  end
+  local chan = vim.b.terminal_job_id
+  if chan then
+    vim.fn.chansend(chan, "/clear")
+  end
+end, { desc = "Clear agent conversation (new chat)" })
