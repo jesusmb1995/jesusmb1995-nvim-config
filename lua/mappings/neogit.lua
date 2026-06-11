@@ -111,3 +111,17 @@ map("n", "<leader>gri", function()
   end
 end, { desc = "Interactive rebase upstream/main (stg if stg branch, else git)" })
 map("n", "<leader>gf", ":Neogit fetch<CR>", { desc = "Git Fetch" })
+
+-- gpps-style push with interactive fzf branch selection (calls ~/.aliases gpps)
+map("n", "<leader>gR", function()
+  local root = vim.fn.systemlist("git rev-parse --show-toplevel 2>/dev/null")[1]
+  if vim.v.shell_error ~= 0 or not root or root == "" then
+    vim.notify("Not inside a git repository", vim.log.levels.ERROR)
+    return
+  end
+
+  -- Source aliases and run gpps in an interactive bash shell with full env
+  local cmd = "bash -i -c 'gpps'"
+  vim.notify("Running gpps (interactive PR branch selection)...", vim.log.levels.INFO)
+  require("nvchad.term").runner { pos = "sp", cmd = cmd, id = "htoggleTerm", clear_cmd = false }
+end, { desc = "Push to PR branch (fzf interactive select)" })
