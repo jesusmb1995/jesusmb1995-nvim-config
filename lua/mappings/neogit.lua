@@ -121,7 +121,7 @@ map("n", "<leader>gR", function()
   end
 
   -- Source aliases and run gpps in an interactive bash shell with full env
-  local cmd = "bash -i -c 'gpps'"
+  local cmd = "bash -i -c 'source $HOME/.aliases && gpps'"
   vim.notify("Running gpps (interactive PR branch selection)...", vim.log.levels.INFO)
   require("nvchad.term").runner { pos = "sp", cmd = cmd, id = "htoggleTerm", clear_cmd = false }
 end, { desc = "Push to PR branch (fzf interactive select)" })
