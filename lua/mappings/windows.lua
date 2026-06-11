@@ -4,6 +4,20 @@ local map = vim.keymap.set
 map("n", "<C-A-S-Right>", ":vertical resize +5<CR>", { desc = "Increase window width", silent = true })
 map("n", "<C-A-S-Left>", ":vertical resize -5<CR>", { desc = "Decrease window width", silent = true })
 
+local function equalize_with_neighbor(direction)
+  local cur_win = vim.api.nvim_get_current_win()
+  local cur_width = vim.api.nvim_win_get_width(cur_win)
+  vim.cmd(direction == "left" and "wincmd h" or "wincmd l")
+  local neighbor_win = vim.api.nvim_get_current_win()
+  if neighbor_win == cur_win then return end
+  local neighbor_width = vim.api.nvim_win_get_width(neighbor_win)
+  vim.api.nvim_set_current_win(cur_win)
+  vim.api.nvim_win_set_width(cur_win, math.floor((cur_width + neighbor_width) / 2))
+end
+
+map("n", "<C-A-S-S>", function() equalize_with_neighbor("left") end, { desc = "Equalize width with left window", silent = true })
+map("n", "<C-A-S-D>", function() equalize_with_neighbor("right") end, { desc = "Equalize width with right window", silent = true })
+
 map("n", "<leader>np", ":NoNeckPain<CR>", { noremap = true, silent = true, desc = "No neck pain toggle" })
 
 -- Automatically resize window on display change
