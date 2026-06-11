@@ -112,7 +112,7 @@ map("n", "<leader>gri", function()
 end, { desc = "Interactive rebase upstream/main (stg if stg branch, else git)" })
 map("n", "<leader>gf", ":Neogit fetch<CR>", { desc = "Git Fetch" })
 
--- gpps-style push with interactive fzf branch selection (calls ~/.aliases gpps)
+-- Push to PR branch with vim.ui.select picker (no fzf needed)
 map("n", "<leader>gR", function()
   local root = vim.fn.systemlist("git rev-parse --show-toplevel 2>/dev/null")[1]
   if vim.v.shell_error ~= 0 or not root or root == "" then
@@ -120,8 +120,39 @@ map("n", "<leader>gR", function()
     return
   end
 
-  -- Source aliases and run gpps in an interactive bash shell with full env
-  local cmd = "bash -i -c 'source $HOME/.aliases && gpps'"
-  vim.notify("Running gpps (interactive PR branch selection)...", vim.log.levels.INFO)
-  require("nvchad.term").runner { pos = "sp", cmd = cmd, id = "htoggleTerm", clear_cmd = false }
-end, { desc = "Push to PR branch (fzf interactive select)" })
+  local username = vim.fn.systemlist("gh api user --jq .login 2>/dev/null")[1]
+  if not username or username == "" then
+    vim.notify("Could not determine GitHub username", vim.log.levels.ERROR)
+    return
+  end
+
+  local branches = vim.fn.systemlist(
+    "gh pr list -L 500 --json headRefName,author,updatedAt --jq "
+      .. "'.[] | select(.author.login==\""
+      .. username
+      .. "\") | [.headRefName, .updatedAt] | @tsv' | sort -k2 -r | cut -f1 2>/dev/null"
+  )
+  if not branches or #branches == 0 then
+    vim.notify("No PR branches found for user '" .. username .. "'", vim.log.levels.WARN)
+    return
+  end
+
+  local function do_push(branch)
+    local cmd = "zsh -i -c 'source $HOME/.aliases && git push origin HEAD:"
+      .. branch
+      .. " --force-with-lease && _pushed_branches_put \"$(stg top 2>/dev/null)\" \"origin "
+      .. branch
+      .. "\" 2>/dev/null; echo; echo \"Done. Press enter to close.\"; read'"
+    require("nvchad.term").runner { pos = "sp", cmd = cmd, id = "htoggleTerm", clear_cmd = false }
+  end
+
+  if #branches == 1 then
+    do_push(branches[1])
+  else
+    vim.ui.select(branches, { prompt = "Select PR branch to push to:" }, function(choice)
+      if choice then
+        do_push(choice)
+      end
+    end)
+  end
+end, { desc = "Push to PR branch (vim.ui.select)" })
