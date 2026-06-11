@@ -10,7 +10,7 @@ return {
       { "<leader>gkg", "<cmd>StgGoto<cr>", desc = "Go to patch" },
       { "<leader>gkr", "<cmd>StgRefresh<cr>", desc = "Refresh current patch" },
       { "<leader>gka", "<cmd>StgStagedApplyTo<cr>", desc = "Apply current staged changes to another patch but stay on current patch" },
-      { "<leader>gkN", "<cmd>StgStagedNewAfter<cr>", desc = "Create new patch with staged changes after current patch and return" },
+      { "<leader>gkN", "<cmd>StgStagedNewAfter<cr>", desc = "Create new patch with staged changes after selected patch and return" },
       { "<leader>gkA", "<cmd>StgApplyTo<cr>", desc = "Apply current changes to another patch but stay on current patch" },
       { "<leader>gku", "<cmd>StgSpill<cr>", desc = "Empty current patch but keep changes locally" },
       { "<leader>gkc", "<cmd>StgBranchClone<cr>", desc = "Clone current branch" },
