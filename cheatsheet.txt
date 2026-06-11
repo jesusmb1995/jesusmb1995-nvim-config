@@ -148,6 +148,7 @@ Move patch to staging area | stg pop [patch] --spill
 Stash staged changes (unstaged remains) | git stash --staged
 Stage all conflicts as resolved | git status --short | grep '^UU' | awk '{print $1}' | xargs git add
 Empty current patch but keep changes locally (spill) | <leader>gku
+Create new patch with staged changes after current (return) | <leader>gkN
 Select and cd to git worktree | <leader>gwg
 Create worktree for branch and cd to it | <leader>gwc
 Remove all clean git worktrees | <leader>gwx
