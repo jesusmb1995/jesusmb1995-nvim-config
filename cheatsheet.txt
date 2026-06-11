@@ -161,8 +161,8 @@ Stage hunk (custom mmap)| <leader>Hs
 ## Target runner
 run via .local_cmd_bookmarks (horizontal terminal) | <leader><A-h>
 run via .local_cmd_bookmarks (vertical terminal) | <leader><A-v>
-run via .local_cmd_bookmarks with dependencies (horizontal terminal) | <leader><A-h> + <C-d>
-run via .local_cmd_bookmarks with dependencies (vertical terminal) | <leader><A-v> + <C-d>
+run via .local_cmd_bookmarks with dependencies [written as dep+name on the file] (horizontal terminal) | <leader><A-h> + <C-d>
+run via .local_cmd_bookmarks with dependencies [written as dep+name on the file] (vertical terminal) | <leader><A-v> + <C-d>
 CTest/GTest picker (save & run via .local_cmd_bookmarks) | <leader><A-H>
 CTest/GTest picker (vertical terminal) | <leader><A-V>
 CTest picker: run prompt text as glob (--gtest_filter=*text*, spans all matching tests) | type text + <C-f>
