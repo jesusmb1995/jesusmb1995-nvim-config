@@ -230,7 +230,8 @@ local function exec_shell_or_ctest(pos, term_id)
 
   if shell_extensions[ext] then
     -- Execute shell script from git worktree root
-    local git_root_lines = vim.fn.systemlist("git rev-parse --show-toplevel 2>/dev/null")
+    local filedir = vim.fn.fnamemodify(filepath, ":h")
+    local git_root_lines = vim.fn.systemlist("git -C " .. vim.fn.shellescape(filedir) .. " rev-parse --show-toplevel 2>/dev/null")
     if vim.v.shell_error ~= 0 or not git_root_lines or #git_root_lines == 0 then
       vim.notify("Not in a git repository", vim.log.levels.ERROR)
       return
