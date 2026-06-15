@@ -138,12 +138,41 @@ map("n", "<leader>gR", function()
   end
 
   local function do_push(branch)
-    local cmd = "zsh -i -c 'source $HOME/.aliases && git push origin HEAD:"
+    local cmd = "source $HOME/.aliases && git push origin HEAD:"
       .. branch
       .. " --force-with-lease && _pushed_branches_put \"$(stg top 2>/dev/null)\" \"origin "
       .. branch
-      .. "\" 2>/dev/null; echo; echo \"Done. Press enter to close.\"; read'"
-    require("nvchad.term").runner { pos = "sp", cmd = cmd, id = "htoggleTerm", clear_cmd = false }
+      .. "\" 2>/dev/null"
+    vim.notify("Pushing to origin/" .. branch .. " ...", vim.log.levels.INFO, { title = "git push" })
+    local output = {}
+    local function collect(_, data)
+      if data then
+        for _, line in ipairs(data) do
+          if line ~= "" then
+            table.insert(output, line)
+          end
+        end
+      end
+    end
+    vim.fn.jobstart({ "zsh", "-i", "-c", cmd }, {
+      stdout_buffered = true,
+      stderr_buffered = true,
+      on_stdout = collect,
+      on_stderr = collect,
+      on_exit = function(_, code)
+        vim.schedule(function()
+          if code == 0 then
+            vim.notify("Pushed to origin/" .. branch, vim.log.levels.INFO, { title = "git push" })
+          else
+            local msg = table.concat(output, "\n")
+            if msg == "" then
+              msg = "exit code " .. code
+            end
+            vim.notify("Push to origin/" .. branch .. " failed:\n" .. msg, vim.log.levels.ERROR, { title = "git push" })
+          end
+        end)
+      end,
+    })
   end
 
   if #branches == 1 then
