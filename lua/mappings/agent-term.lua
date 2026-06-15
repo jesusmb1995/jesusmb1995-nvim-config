@@ -23,6 +23,16 @@ local function ensure_is_agent_marker()
   end
 end
 
+-- Known agent CLI tools. `cmd` is both the executable probed for installation
+-- and the value stored under the `agentclitool` kv key (spawned by <C-l> etc).
+local AGENT_TOOLS = {
+  { cmd = "gemini", label = "gemini" },
+  { cmd = "claude", label = "claude" },
+  { cmd = "agent", label = "agent (cursor cli)" },
+  { cmd = "codex", label = "codex" },
+  { cmd = "agy", label = "agy (antigravity)" },
+}
+
 local _agent_cli_tool = nil
 local function get_agent_cli_tool()
   if _agent_cli_tool then return _agent_cli_tool end
@@ -103,6 +113,45 @@ map("n", "<C-S-l>", function()
   vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "x", false)
   send_to_agent("@" .. file .. " ")
 end, { desc = "Send file reference to agent terminal" })
+
+local function select_agent_cli_tool()
+  local installed = {}
+  for _, tool in ipairs(AGENT_TOOLS) do
+    if vim.fn.executable(tool.cmd) == 1 then
+      installed[#installed + 1] = tool
+    end
+  end
+
+  if #installed == 0 then
+    vim.notify("No agent CLI tools found in PATH (" .. #AGENT_TOOLS .. " known)", vim.log.levels.WARN, { title = "AiSelect" })
+    return
+  end
+
+  local current = get_agent_cli_tool()
+  vim.ui.select(installed, {
+    prompt = "Select default agent CLI tool",
+    format_item = function(tool)
+      local mark = tool.cmd == current and " (current)" or ""
+      return tool.label .. mark
+    end,
+  }, function(choice)
+    if not choice then return end
+    local cmd = "bash -c " .. vim.fn.shellescape("source ~/.aliases 2>/dev/null && kv-put agentclitool " .. vim.fn.shellescape(choice.cmd))
+    local out = vim.fn.system(cmd)
+    if vim.v.shell_error ~= 0 then
+      vim.notify("kv-put failed: " .. out, vim.log.levels.ERROR, { title = "AiSelect" })
+      return
+    end
+    _agent_cli_tool = choice.cmd
+    vim.notify("Default agent CLI tool set to " .. choice.cmd, vim.log.levels.INFO, { title = "AiSelect" })
+  end)
+end
+
+-- Requested as `:ai-select`, but Vim user-command names cannot contain hyphens
+-- or start lowercase, so it is exposed as `:AiSelect`.
+vim.api.nvim_create_user_command("AiSelect", select_agent_cli_tool, {
+  desc = "Select default agent CLI tool spawned by <C-l>",
+})
 
 map("t", "<C-n>", function()
   if not in_agent_term() then
