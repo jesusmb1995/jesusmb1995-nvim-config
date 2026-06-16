@@ -2,9 +2,12 @@
 -- the oh-my-zsh tmux plugin attaches to a pre-warmed session on the first
 -- ~/.zshrc source. Neovim injects $NVIM (and inherits $TMUX) into terminal
 -- children, which makes the plugin's autostart guard skip; launching clean
--- avoids the old `unset NVIM TMUX; exec zsh` re-source dance. The shell starts
--- in Neovim's cwd (NvChad sets no cwd), so the plugin's `cd` lands correctly.
--- See doc/tmux.md.
+-- avoids the old `unset NVIM TMUX; exec zsh` re-source dance.
+--
+-- The terminal cwd is pinned to Neovim's getcwd explicitly: the inherited
+-- terminal cwd is unreliable (it has been observed as /), and the warm session
+-- is born in the daemon's /tmp, so the plugin's `cd "$(pwd)"` only lands in the
+-- project when $(pwd) of this shell is right. See doc/tmux.md.
 local warm_shell = "env -u NVIM -u TMUX zsh"
 local map = vim.keymap.set
 
@@ -19,7 +22,10 @@ local warm_terms = {
 for _, t in ipairs(warm_terms) do
   local lhs, modes, fn, opts, label = t[1], t[2], t[3], t[4], t[5]
   map(modes, lhs, function()
-    require("nvchad.term")[fn](vim.tbl_extend("force", opts, { cmd = warm_shell }))
+    require("nvchad.term")[fn](vim.tbl_extend("force", opts, {
+      cmd = warm_shell,
+      termopen_opts = { cwd = vim.fn.getcwd() },
+    }))
   end, { desc = "terminal " .. label .. " (warm tmux)" })
 end
 
