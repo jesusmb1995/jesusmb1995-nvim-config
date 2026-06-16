@@ -9,6 +9,7 @@ tmux select mode (in visual mode) | space
 tmux copy (in visual mode and select mode) | enter 
 tmux split vertical | <C-b>%
 tmux jump split | <C-b>o
+tmux close splitted | <C-b>&
 rerun last command | r<enter>
 ## Debugging
 coredumpctl list | list available core dumps
