@@ -185,6 +185,8 @@ Send visual selection as @file:lines ref | <C-l> (visual mode)
 Clear agent terminal output | <C-n><carriage return>
 ## Claude agent terminal inside neovim 
 Enter transcript mode to move with jk | <C-o>
+Change terminal (tmux compatible) | <C-b>o
+Change terminal (tmux compatible) | <C-b><arrows>
 ## Vimium (browser)
 Yank/copy link | yf
 Click | f
