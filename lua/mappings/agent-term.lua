@@ -121,19 +121,26 @@ map("n", "<C-S-l>", function()
   send_to_agent("@" .. file .. " ")
 end, { desc = "Send file reference to agent terminal" })
 
-local function cmd_exists(cmd)
-  if vim.fn.executable(cmd) == 1 then return true end
-  local out = vim.fn.system("bash -c 'source ~/.aliases 2>/dev/null; command -v " .. vim.fn.shellescape(cmd) .. " 2>/dev/null'")
-  return out:gsub("%s+", "") ~= ""
-end
-
-local function select_agent_cli_tool()
+-- Resolve which AGENT_TOOLS are installed using a single shell invocation so
+-- tools in brew/nix/local paths not in nvim's inherited PATH are found too.
+local function get_installed_tools()
+  local cmds = {}
+  for _, tool in ipairs(AGENT_TOOLS) do cmds[#cmds + 1] = tool.cmd end
+  local script = "for c in " .. table.concat(cmds, " ") .. "; do command -v \"$c\" >/dev/null 2>&1 && echo \"$c\"; done"
+  local raw = vim.fn.system({ vim.env.SHELL or "zsh", "-lc", script })
+  local found = {}
+  for line in raw:gmatch("[^\n]+") do found[line] = true end
   local installed = {}
   for _, tool in ipairs(AGENT_TOOLS) do
-    if cmd_exists(tool.cmd) then
+    if found[tool.cmd] or vim.fn.executable(tool.cmd) == 1 then
       installed[#installed + 1] = tool
     end
   end
+  return installed
+end
+
+local function select_agent_cli_tool()
+  local installed = get_installed_tools()
 
   if #installed == 0 then
     vim.notify(
