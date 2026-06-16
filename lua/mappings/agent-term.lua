@@ -121,14 +121,31 @@ map("n", "<C-S-l>", function()
   send_to_agent("@" .. file .. " ")
 end, { desc = "Send file reference to agent terminal" })
 
+local function cmd_exists(cmd)
+  if vim.fn.executable(cmd) == 1 then return true end
+  local out = vim.fn.system("bash -c 'source ~/.aliases 2>/dev/null; command -v " .. vim.fn.shellescape(cmd) .. " 2>/dev/null'")
+  return out:gsub("%s+", "") ~= ""
+end
+
 local function select_agent_cli_tool()
-  if #AGENT_TOOLS == 0 then
-    vim.notify("No agent CLI tools enabled in config", vim.log.levels.WARN, { title = "AiSelect" })
+  local installed = {}
+  for _, tool in ipairs(AGENT_TOOLS) do
+    if cmd_exists(tool.cmd) then
+      installed[#installed + 1] = tool
+    end
+  end
+
+  if #installed == 0 then
+    vim.notify(
+      "No enabled agent CLI tools found in PATH (" .. #AGENT_TOOLS .. " enabled in config)",
+      vim.log.levels.WARN,
+      { title = "AiSelect" }
+    )
     return
   end
 
   local current = get_agent_cli_tool()
-  vim.ui.select(AGENT_TOOLS, {
+  vim.ui.select(installed, {
     prompt = "Select default agent CLI tool",
     format_item = function(tool)
       local mark = tool.cmd == current and " (current)" or ""
