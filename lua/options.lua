@@ -23,7 +23,7 @@ vim.opt.shortmess:append("A")
 vim.api.nvim_create_autocmd("TermOpen", {
   callback = function()
     if vim.fn.exists("$TMUX") == 1 then
-      vim.fn.system("tmux set-environment -g NVIM_TERM_DIR " .. vim.fn.shellescape(vim.fn.getcwd()))
+      vim.fn.system("tmux set-environment -g NVIM_TERM_DIR " .. vim.fn.shellescape(vim.fn.expand(vim.fn.getcwd())))
     end
     -- Unset NVIM and TMUX so oh-my-zsh tmux plugin auto-starts tmux inside :terminal
     local buf = vim.api.nvim_get_current_buf()
