@@ -126,10 +126,19 @@ end, { desc = "Send file reference to agent terminal" })
 local function get_installed_tools()
   local cmds = {}
   for _, tool in ipairs(AGENT_TOOLS) do cmds[#cmds + 1] = tool.cmd end
-  local script = "for c in " .. table.concat(cmds, " ") .. "; do command -v \"$c\" >/dev/null 2>&1 && echo \"$c\"; done"
+  -- nvim runs a login but NON-interactive shell, which sources ~/.zprofile but
+  -- not ~/.zshrc. Homebrew's `brew shellenv` typically lives in ~/.zshrc, so
+  -- brew-installed tools (e.g. opencode) are invisible to a plain `zsh -lc`.
+  -- Load brew's env explicitly (side-effect-free) before probing PATH, rather
+  -- than running an interactive shell (which would trigger ssh-add, tmux, etc).
+  local script = table.concat({
+    "for b in /home/linuxbrew/.linuxbrew/bin/brew /opt/homebrew/bin/brew /usr/local/bin/brew; do",
+    "  [ -x \"$b\" ] && eval \"$(\"$b\" shellenv)\" && break",
+    "done",
+    "for c in " .. table.concat(cmds, " ") .. "; do command -v \"$c\" >/dev/null 2>&1 && echo \"$c\"; done",
+  }, "\n")
   local shell = vim.env.SHELL or "zsh"
   local raw = vim.fn.system({ shell, "-lc", script })
-  vim.notify("AiSelect debug — shell: " .. shell .. "\nfound: " .. vim.inspect(raw), vim.log.levels.DEBUG, { title = "AiSelect" })
   local found = {}
   for line in raw:gmatch("[^\n]+") do found[line] = true end
   local installed = {}
