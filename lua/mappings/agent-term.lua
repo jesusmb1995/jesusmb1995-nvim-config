@@ -127,7 +127,9 @@ local function get_installed_tools()
   local cmds = {}
   for _, tool in ipairs(AGENT_TOOLS) do cmds[#cmds + 1] = tool.cmd end
   local script = "for c in " .. table.concat(cmds, " ") .. "; do command -v \"$c\" >/dev/null 2>&1 && echo \"$c\"; done"
-  local raw = vim.fn.system({ vim.env.SHELL or "zsh", "-lc", script })
+  local shell = vim.env.SHELL or "zsh"
+  local raw = vim.fn.system({ shell, "-lc", script })
+  vim.notify("AiSelect debug — shell: " .. shell .. "\nfound: " .. vim.inspect(raw), vim.log.levels.DEBUG, { title = "AiSelect" })
   local found = {}
   for line in raw:gmatch("[^\n]+") do found[line] = true end
   local installed = {}
