@@ -1,3 +1,28 @@
+-- Open generic terminals with NVIM and TMUX stripped from the environment so
+-- the oh-my-zsh tmux plugin attaches to a pre-warmed session on the first
+-- ~/.zshrc source. Neovim injects $NVIM (and inherits $TMUX) into terminal
+-- children, which makes the plugin's autostart guard skip; launching clean
+-- avoids the old `unset NVIM TMUX; exec zsh` re-source dance. The shell starts
+-- in Neovim's cwd (NvChad sets no cwd), so the plugin's `cd` lands correctly.
+-- See doc/tmux.md.
+local warm_shell = "env -u NVIM -u TMUX zsh"
+local map = vim.keymap.set
+
+local warm_terms = {
+  { "<A-v>", { "n", "t" }, "toggle", { pos = "vsp", id = "vtoggleTerm" }, "toggleable vertical" },
+  { "<A-h>", { "n", "t" }, "toggle", { pos = "sp", id = "htoggleTerm" }, "toggleable horizontal" },
+  { "<A-i>", { "n", "t" }, "toggle", { pos = "float", id = "floatTerm" }, "floating" },
+  { "<leader>h", "n", "new", { pos = "sp" }, "new horizontal" },
+  { "<leader>v", "n", "new", { pos = "vsp" }, "new vertical" },
+}
+
+for _, t in ipairs(warm_terms) do
+  local lhs, modes, fn, opts, label = t[1], t[2], t[3], t[4], t[5]
+  map(modes, lhs, function()
+    require("nvchad.term")[fn](vim.tbl_extend("force", opts, { cmd = warm_shell }))
+  end, { desc = "terminal " .. label .. " (warm tmux)" })
+end
+
 local terminal_file_ref_pattern = [[\v(\f+\/\f+|\f+\.\f+)(:\d+(:\d+)?)?]]
 
 local function jump_terminal_file_ref(forward)
