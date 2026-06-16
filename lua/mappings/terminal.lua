@@ -60,9 +60,14 @@ local warm_terms = {
 for _, t in ipairs(warm_terms) do
   local lhs, modes, fn, opts, label = t[1], t[2], t[3], t[4], t[5]
   map(modes, lhs, function()
+    local dir = warm_cwd()
+    -- Pass the target dir both as the job cwd and as $NVIM_WARM_CD. The env var
+    -- is the source of truth: it survives `env -u NVIM -u TMUX` and the tmux
+    -- plugin cd's the warm session to it (the warm session is born in the
+    -- daemon's /tmp and $(pwd) of this shell is unreliable). See doc/tmux.md.
     require("nvchad.term")[fn](vim.tbl_extend("force", opts, {
       cmd = warm_shell,
-      termopen_opts = { cwd = warm_cwd() },
+      termopen_opts = { cwd = dir, env = { NVIM_WARM_CD = dir } },
     }))
   end, { desc = "terminal " .. label .. " (warm tmux)" })
 end
