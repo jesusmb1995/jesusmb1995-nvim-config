@@ -4,12 +4,28 @@
 -- children, which makes the plugin's autostart guard skip; launching clean
 -- avoids the old `unset NVIM TMUX; exec zsh` re-source dance.
 --
--- The terminal cwd is pinned to Neovim's getcwd explicitly: the inherited
--- terminal cwd is unreliable (it has been observed as /), and the warm session
--- is born in the daemon's /tmp, so the plugin's `cd "$(pwd)"` only lands in the
--- project when $(pwd) of this shell is right. See doc/tmux.md.
+-- The terminal cwd is pinned explicitly: the inherited terminal cwd is
+-- unreliable and the warm session is born in the daemon's /tmp, so the plugin's
+-- `cd "$(pwd)"` only lands in the project when $(pwd) of this shell is right.
+-- getcwd is preferred, but it is itself unreliable (nvim is often launched from
+-- a shell already sitting at /, e.g. a warm session that landed at /), so when
+-- getcwd is / or empty we fall back to the current file's git root / directory.
+-- See doc/tmux.md.
 local warm_shell = "env -u NVIM -u TMUX zsh"
 local map = vim.keymap.set
+
+local function warm_cwd()
+  local cwd = vim.fn.getcwd()
+  if cwd ~= "" and cwd ~= "/" then
+    return cwd
+  end
+  local file = vim.api.nvim_buf_get_name(0)
+  if file == "" then
+    return cwd
+  end
+  local dir = vim.fs.dirname(file)
+  return vim.fs.root(dir, { ".git" }) or dir
+end
 
 local warm_terms = {
   { "<A-v>", { "n", "t" }, "toggle", { pos = "vsp", id = "vtoggleTerm" }, "toggleable vertical" },
@@ -24,7 +40,7 @@ for _, t in ipairs(warm_terms) do
   map(modes, lhs, function()
     require("nvchad.term")[fn](vim.tbl_extend("force", opts, {
       cmd = warm_shell,
-      termopen_opts = { cwd = vim.fn.getcwd() },
+      termopen_opts = { cwd = warm_cwd() },
     }))
   end, { desc = "terminal " .. label .. " (warm tmux)" })
 end
