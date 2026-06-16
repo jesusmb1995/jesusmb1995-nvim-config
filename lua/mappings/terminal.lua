@@ -14,17 +14,39 @@
 local warm_shell = "env -u NVIM -u TMUX zsh"
 local map = vim.keymap.set
 
+local function file_root(file)
+  if file == nil or file == "" then
+    return nil
+  end
+  local dir = vim.fs.dirname(file)
+  if dir == nil or vim.fn.isdirectory(dir) == 0 then
+    return nil
+  end
+  return vim.fs.root(dir, { ".git" }) or dir
+end
+
 local function warm_cwd()
   local cwd = vim.fn.getcwd()
   if cwd ~= "" and cwd ~= "/" then
     return cwd
   end
-  local file = vim.api.nvim_buf_get_name(0)
-  if file == "" then
-    return cwd
+  -- getcwd is useless (nvim was launched from a shell at /). Anchor to an open
+  -- file's git root instead: current buffer, then alternate, then any loaded
+  -- buffer. Last resort is $HOME — never /.
+  local seen = { file_root(vim.api.nvim_buf_get_name(0)) }
+  local alt = vim.fn.bufname("#")
+  seen[#seen + 1] = file_root(alt ~= "" and vim.fn.fnamemodify(alt, ":p") or nil)
+  for _, b in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(b) then
+      seen[#seen + 1] = file_root(vim.api.nvim_buf_get_name(b))
+    end
   end
-  local dir = vim.fs.dirname(file)
-  return vim.fs.root(dir, { ".git" }) or dir
+  for _, root in ipairs(seen) do
+    if root then
+      return root
+    end
+  end
+  return vim.env.HOME or cwd
 end
 
 local warm_terms = {
