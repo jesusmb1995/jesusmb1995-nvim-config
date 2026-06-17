@@ -1,3 +1,22 @@
+-- lazy uses Neovim's vim.loader byte-compilation cache, which names each cache
+-- file after the URL-encoded *absolute source path*. On filesystems with short
+-- filename limits (eCryptfs caps encrypted names at ~143 bytes) or deeply-nested
+-- HOMEs (e.g. the distrobox test container) that name overflows NAME_MAX and
+-- startup aborts with E5113 ENAMETOOLONG. Probe the cache dir with a
+-- representative long name; only keep the loader cache when it is writable.
+local function loader_cache_writable()
+  local dir = vim.fn.stdpath("cache") .. "/luac"
+  vim.fn.mkdir(dir, "p")
+  local probe = dir .. "/" .. string.rep("a", 180)
+  local fd = io.open(probe, "w")
+  if not fd then
+    return false
+  end
+  fd:close()
+  os.remove(probe)
+  return true
+end
+
 return {
   defaults = { lazy = true },
   install = { colorscheme = { "nvchad" } },
@@ -12,6 +31,7 @@ return {
   },
 
   performance = {
+    cache = { enabled = loader_cache_writable() },
     rtp = {
       disabled_plugins = {
         "2html_plugin",
