@@ -1,7 +1,9 @@
 local map = vim.keymap.set
 
-local _conform = require "conform"
-local _linter = require "lint"
+-- Plugins may not be installed yet (first boot before lazy sync); skip silently.
+local ok_conform, _conform = pcall(require, "conform")
+local ok_lint, _linter = pcall(require, "lint")
+if not ok_conform or not ok_lint then return end
 local current_formatter = {}
 local current_linter = {}
 
