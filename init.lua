@@ -27,6 +27,8 @@ vim.opt.rtp:prepend(lazypath)
 local lazy_config = require "configs.lazy"
 
 -- load plugins
+local _languages = require "languages"
+
 require("lazy").setup({
   {
     "NvChad/NvChad",
@@ -37,6 +39,8 @@ require("lazy").setup({
 
   { import = "plugins" },
 }, lazy_config)
+
+require("lazy").setup(GET_INIT_CONFIG(_languages), lazy_config)
 
 -- load theme
 dofile(vim.g.base46_cache .. "defaults")

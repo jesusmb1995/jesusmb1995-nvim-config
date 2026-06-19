@@ -1,20 +1,51 @@
 local options = {
   formatters_by_ft = {
+{% if languages.lua %}
     lua = { "stylua" },
+{% endif %}
+{% if languages.css %}
     css = { "prettier" },
+{% endif %}
+{% if languages.html %}
     html = { "prettier" },
+{% endif %}
+{% if languages.javascript %}
     javascript = { "standardjs", "biome" },
+{% endif %}
+{% if languages.typescript %}
     typescript = { "biome" },
+{% endif %}
+{% if languages.python %}
     python = { "black" },
+{% endif %}
+{% if languages.rust %}
     rust = { "rustfmt" },
+{% endif %}
+{% if languages.cpp or languages.c %}
     cpp = { "clang-format" },
     c = { "clang-format" },
+{% endif %}
+{% if languages.yaml %}
     yaml = { "yamlfmt" },
+{% endif %}
+{% if languages.json %}
     json = { "prettier" },
+{% endif %}
+{% if languages.jsonnet %}
+    jsonnet = { "jsonnetfmt" },
+{% endif %}
+{% if languages.markdown %}
     markdown = { "prettier" },
+{% endif %}
+{% if languages.cmake %}
     cmake = { "cmakelang" },
+{% endif %}
+{% if languages.bash %}
     bash = { "beautysh" },
+{% endif %}
+{% if languages.zsh %}
     zsh = { "beautysh" },
+{% endif %}
   },
 
 

@@ -1,13 +1,12 @@
 function GET_INIT_CONFIG()
+  local _languages = require "languages"
   if vim.env.NVIM_MINIMAL == nil then
     return {
       {
         "stevearc/conform.nvim",
-        -- event = 'BufWritePre', -- uncomment for format on save
         opts = require "configs.conform",
       },
 
-      -- These are some examples, uncomment them if you want to see them work!
       {
         "neovim/nvim-lspconfig",
         config = function()
@@ -19,26 +18,19 @@ function GET_INIT_CONFIG()
         "nvim-treesitter/nvim-treesitter",
         opts = {
           ensure_installed = {
-            -- NvChad originals (where commented out anyway)
             "vim",
             "lua",
             "vimdoc",
-            "html",
-            "css",
-
-            -- Additions
-            "cpp",
-            "rust",
-            "javascript",
-            "typescript",
-            "yaml",
-            "json",
-            "toml",
-            "cmake",
+{% for lang in ['html', 'css', 'cpp', 'rust', 'javascript', 'typescript', 'yaml', 'json', 'toml', 'cmake', 'jsonnet'] %}
+{%   if languages.get(lang, false) %}
+            "{{ lang }}",
+{%   endif %}
+{% endfor %}
           },
         },
       },
 
+{% if languages.bash or languages.lua %}
       {
         "nvim-telescope/telescope-fzf-native.nvim",
         build = "make",
@@ -123,6 +115,7 @@ function GET_INIT_CONFIG()
           end
         end,
       },
+{% endif %}
     }
   else
     return {
@@ -131,7 +124,6 @@ function GET_INIT_CONFIG()
         enabled = false,
       },
 
-      -- These are some examples, uncomment them if you want to see them work!
       {
         "neovim/nvim-lspconfig",
         enabled = false,
