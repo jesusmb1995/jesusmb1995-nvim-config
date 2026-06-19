@@ -5,6 +5,7 @@ return {
   init = function()
     -- Prevent vim.loader filename-length failures for this plugin on systems
     -- where .cache/nvim/luac path segments can exceed filesystem limits.
+    -- Deprecated vin.loader.disable, therefore commented out
     -- if vim.loader and vim.loader.disable then
     --   vim.loader.disable()
     -- end
