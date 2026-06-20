@@ -21,7 +21,7 @@ function GET_INIT_CONFIG()
             "vim",
             "lua",
             "vimdoc",
-{% for lang in ['html', 'css', 'cpp', 'rust', 'javascript', 'typescript', 'yaml', 'json', 'toml', 'cmake', 'jsonnet', 'jinja'] %}
+{% for lang in ['html', 'css', 'cpp', 'rust', 'javascript', 'typescript', 'yaml', 'json', 'toml', 'cmake', 'jsonnet', 'jinja', 'amber'] %}
 {%   if languages.get(lang, false) %}
             "{{ lang }}",
 {%   endif %}

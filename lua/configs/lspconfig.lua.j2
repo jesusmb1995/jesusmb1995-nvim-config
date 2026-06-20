@@ -1,6 +1,10 @@
 -- load defaults i.e lua_lsp
 require("nvchad.configs.lspconfig").defaults()
 
+{% if languages.jinja %}
+vim.filetype.add({ extension = { j2 = "jinja" } })
+{% endif %}
+
 -- EXAMPLE
 local servers = {
 {% if languages.cpp %}
@@ -43,7 +47,13 @@ local servers = {
   "dockerls",
 {% endif %}
 {% if languages.jsonnet %}
-  -- jsonnet LSP (install jsonnetfmt + jsonnet-language-server via brew/nix)
+  "jsonnet-language-server",
+{% endif %}
+{% if languages.jinja %}
+  "jinja-lsp",
+{% endif %}
+{% if languages.amber %}
+  "amber-lsp",
 {% endif %}
 
   -- Below to be installed by hand on :Mason. Go to line and do "i" key to install.
