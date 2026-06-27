@@ -23,7 +23,7 @@ function GET_INIT_CONFIG()
             "lua",
             "vimdoc",
 {% for lang in ['html', 'css', 'cpp', 'rust', 'javascript', 'typescript', 'yaml', 'json', 'toml', 'cmake', 'jsonnet', 'jinja'] %}
-{%   if languages.get(lang, false) %}
+{%   if languages[lang] | default(false) %}
             "{{ lang }}",
 {%   endif %}
 {% endfor %}
