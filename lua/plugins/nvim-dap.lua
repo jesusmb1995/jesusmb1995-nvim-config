@@ -1,7 +1,7 @@
 local last_dap_config = nil
 
 return {
-  "mfussenegger/nvim-dap.nvim",
+  "mfussenegger/nvim-dap",
   url = "https://github.com/mfussenegger/nvim-dap",
   dependencies = { 'rcarriaga/nvim-dap-ui' },
   enabled = function()

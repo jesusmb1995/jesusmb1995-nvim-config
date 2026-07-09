@@ -1,3 +1,9 @@
+{% set ns = namespace(prefetch=false) -%}
+{% for repo in repositories -%}
+{% if repo.id == "nvim" and repo.features and "prefetch_plugins" in repo.features -%}
+{% set ns.prefetch = true -%}
+{% endif -%}
+{% endfor -%}
 -- Share vim config with neovim
 vim.cmd("set runtimepath^=~/.vim runtimepath+=~/.vim/after")
 vim.cmd("let &packpath=&runtimepath")
@@ -14,12 +20,16 @@ source_if_exists("~/.vimrc_prog_mapping")
 vim.g.base46_cache = vim.fn.stdpath "data" .. "/base46/"
 vim.g.mapleader = " "
 
--- bootstrap lazy and all plugins
+-- bootstrap lazy: prefer data path (existing runtime install),
+-- then config path (pre-fetched bundle or fresh checkout).
+-- Clone fallback only when prefetch_plugins is not enabled.
 local lazypath = vim.fn.stdpath "data" .. "/lazy/lazy.nvim"
-
-if not vim.uv.fs_stat(lazypath) then
-  local repo = "https://github.com/folke/lazy.nvim.git"
-  vim.fn.system { "git", "clone", "--filter=blob:none", repo, "--branch=stable", lazypath }
+if not vim.uv.fs_stat(lazypath .. "/lua/lazy.lua") then
+  lazypath = vim.fn.stdpath "config" .. "/lazy/lazy.nvim"{% if not ns.prefetch %}
+  if not vim.uv.fs_stat(lazypath .. "/lua/lazy.lua") then
+    local repo = "https://github.com/folke/lazy.nvim.git"
+    vim.fn.system { "git", "clone", repo, "--branch=stable", "--depth=1", lazypath }
+  end{% endif %}
 end
 
 vim.opt.rtp:prepend(lazypath)

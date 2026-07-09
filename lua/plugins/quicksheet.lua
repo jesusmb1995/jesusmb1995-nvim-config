@@ -1,0 +1,15 @@
+return {
+  {
+    url = "https://github.com/jesusmb1995/quicksheet",
+    lazy = true,
+    cmd = { "QuickSheet", "QuickEdit", "QuickUpdate" },
+    keys = {
+      { "<leader>?", "<cmd>QuickSheet<CR>", desc = "QuickSheet" },
+    },
+    dependencies = { "nvim-telescope/telescope.nvim" },
+    config = function()
+      require("quicksheet").setup({ auto_mapping = false })
+      require("telescope").load_extension("quicksheet")
+    end,
+  },
+}
