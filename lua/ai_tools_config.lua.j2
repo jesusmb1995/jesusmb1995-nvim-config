@@ -1,0 +1,44 @@
+local M = {}
+
+M.enabled_tools = {
+{%- for key in ['gemini', 'claude', 'cursor', 'codex', 'agy', 'opencode', 'kilocode'] %}
+{%-   if ai_tools[key] %}
+{%-     set label = 'agent' if key == 'cursor' else key %}
+  "{{ label }}",
+{%-   endif %}
+{%- endfor %}
+}
+
+M.tool_info = {
+{%- for key in ['gemini', 'claude', 'cursor', 'codex', 'agy', 'opencode', 'kilocode'] %}
+{%-   if ai_tools[key] %}
+{%-     set label = 'agent' if key == 'cursor' else key %}
+{%-     set suffix = ' (cursor cli)' if key == 'cursor' else ' (antigravity)' if key == 'agy' else '' %}
+  {{ label }} = { cmd = "{{ label }}", label = "{{ label }}{{ suffix }}" },
+{%-   endif %}
+{%- endfor %}
+}
+
+function M.get_installed_enabled_tools()
+  local installed = {}
+  for _, tool_key in ipairs(M.enabled_tools) do
+    local info = M.tool_info[tool_key]
+    if info and vim.fn.executable(info.cmd) == 1 then
+      table.insert(installed, info)
+    end
+  end
+  return installed
+end
+
+function M.get_enabled_tools()
+  local tools = {}
+  for _, tool_key in ipairs(M.enabled_tools) do
+    local info = M.tool_info[tool_key]
+    if info then
+      table.insert(tools, info)
+    end
+  end
+  return tools
+end
+
+return M
