@@ -1,0 +1,27 @@
+{% set ns = namespace(prefetch=false) -%}
+{% for repo in repositories -%}
+{% if repo.id == "nvim" and repo.features and "prefetch_plugins" in repo.features -%}
+{% set ns.prefetch = true -%}
+{% endif -%}
+{% endfor -%}
+{% if ns.prefetch %}
+return {
+  "mason-org/mason.nvim",
+  opts = {
+    automatic_installation = false,
+    ui = { check_outdated_packages_on_open = false },
+  },
+  config = function(_, opts)
+    dofile(vim.g.base46_cache .. "mason")
+    require("mason").setup(opts)
+    local warn = function(name)
+      vim.notify("[locked] " .. name .. " disabled — packages are pre-installed", vim.log.levels.WARN)
+    end
+    vim.api.nvim_create_user_command("MasonInstall", function() warn("MasonInstall") end, { force = true })
+    vim.api.nvim_create_user_command("MasonUninstall", function() warn("MasonUninstall") end, { force = true })
+    vim.api.nvim_create_user_command("MasonUpdate", function() warn("MasonUpdate") end, { force = true })
+  end,
+}
+{% else %}
+return {}
+{% endif %}

@@ -17,9 +17,19 @@ local function loader_cache_writable()
   return true
 end
 
+{% set ns = namespace(prefetch=false) -%}
+{% for repo in repositories -%}
+{% if repo.id == "nvim" and repo.features and "prefetch_plugins" in repo.features -%}
+{% set ns.prefetch = true -%}
+{% endif -%}
+{% endfor -%}
 return {
   defaults = { lazy = true },
   install = { colorscheme = { "nvchad" } },
+{% if ns.prefetch %}
+  checker = { enabled = false },
+  change_detection = { notify = false },
+{% endif %}
 
   ui = {
     icons = {
