@@ -11,6 +11,7 @@ M.enabled_tools = {
   "codex",
   "agy",
   "opencode",
+  "kilocode",
 }
 
 -- Tool metadata for display
@@ -21,6 +22,7 @@ M.tool_info = {
   codex  = { cmd = "codex", label = "codex" },
   agy    = { cmd = "agy", label = "agy (antigravity)" },
   opencode = { cmd = "opencode", label = "opencode" },
+  kilocode  = { cmd = "kilocode", label = "kilocode" },
 }
 
 -- Get list of enabled tools that are installed (executable in PATH)
