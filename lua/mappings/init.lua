@@ -9,6 +9,7 @@ if vim.env.NVIM_MINIMAL == nil then
   require "mappings.nvim-tree"
   require "mappings.cmp"
   require "mappings.neogit"
+  require "mappings.jj"
   require "mappings.gitsigns"
   require "mappings.git-worktrees"
   require "mappings.testing"

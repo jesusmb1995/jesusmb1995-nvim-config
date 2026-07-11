@@ -75,6 +75,10 @@
     "branch": "master",
     "commit": "d28a3f70721c79e3c5f6693057ae929f3d9c0a03"
   },
+  "jj.nvim": {
+    "branch": "main",
+    "commit": "cffc74128a80398469085e01ff2e4001e330b800"
+  },
   "lazy.nvim": {
     "branch": "main",
     "commit": "306a05526ada86a7b30af95c5cc81ffba93fef97"

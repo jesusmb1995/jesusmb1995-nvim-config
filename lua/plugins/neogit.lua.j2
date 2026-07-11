@@ -1,3 +1,4 @@
+{% if not system_tools.jj %}
 return {
   "NeogitOrg/neogit",
   enabled = function()
@@ -15,4 +16,7 @@ return {
   config = true,
   cmd = "Neogit",
 }
-
+{% else %}
+-- jj mode: neogit disabled (jj.nvim replaces it).
+return {}
+{% endif %}

@@ -1,3 +1,4 @@
+{% if not system_tools.jj %}
 vim.keymap.set("n", "<leader>gcr", ":GitConflictRefresh<CR>",  { desc = "Activate git conflict plugin" } )
 vim.keymap.set("n", "<leader>gcl", ":GitConflictListQf<CR>",  { desc = "Show git conflict list" } )
 vim.keymap.set("n", "<leader>gcL", function()
@@ -35,3 +36,4 @@ vim.keymap.set("n", "<leader>gco", ":GitConflictChooseOurs<CR>",  { desc = "Reso
 vim.keymap.set("n", "<leader>gcb", ":GitConflictChooseBoth<CR>",  { desc = "Resolve conflict choosing both" } )
 vim.keymap.set("n", "<leader>gcn", ":GitConflictChooseNone<CR>",  { desc = "Resolve conflict choosing none" } )
 vim.keymap.set("n", "<leader>gct", ":GitConflictChooseTheirs<CR>",  { desc = "Resolve conflict choosing  incoming/theirs" } )
+{% endif %}

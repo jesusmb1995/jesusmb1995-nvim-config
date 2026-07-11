@@ -1,3 +1,4 @@
+{% if not system_tools.jj %}
 return {
   'akinsho/git-conflict.nvim',
   enabled = function()
@@ -7,3 +8,7 @@ return {
   config = true,
   cmd = { "GitConflictListQf", "GitConflictRefresh" }
 }
+{% else %}
+-- jj mode: git-conflict disabled (jj has first-class conflicts; use :J resolve).
+return {}
+{% endif %}

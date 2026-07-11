@@ -1,3 +1,4 @@
+{% if not system_tools.jj %}
 local map = vim.keymap.set
 
 -- Git shortcuts
@@ -185,3 +186,4 @@ map("n", "<leader>gR", function()
     end)
   end
 end, { desc = "Push to PR branch (vim.ui.select)" })
+{% endif %}

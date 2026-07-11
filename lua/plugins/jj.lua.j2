@@ -1,0 +1,30 @@
+{% if system_tools.jj %}
+-- jj.nvim: neogit/stg-class UI for jujutsu. Uses diffview (already installed) as
+-- the diff backend and snacks.nvim for pickers. Lazy-loads on the :J command;
+-- leader mappings live in lua/mappings/jj.lua.
+return {
+  "nicolasgb/jj.nvim",
+  lazy = true,
+  cmd = "J",
+  dependencies = {
+    "folke/snacks.nvim",       -- picker (optional but present)
+    "sindrets/diffview.nvim",  -- diff backend
+  },
+  config = function()
+    require("jj").setup({
+      diff = { backend = "diffview" },
+      cmd = {
+        describe = {
+          editor = {
+            type = "buffer",
+            keymaps = { close = { "q", "<Esc>", "<C-c>" } },
+          },
+        },
+      },
+    })
+  end,
+}
+{% else %}
+-- jj disabled: jj.nvim not loaded.
+return {}
+{% endif %}

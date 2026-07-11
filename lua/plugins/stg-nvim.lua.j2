@@ -1,3 +1,4 @@
+{% if not system_tools.jj %}
 return {
   {
     url = "https://github.com/jesusmb1995/stg-nvim",
@@ -26,3 +27,7 @@ return {
     end
   }
 }
+{% else %}
+-- jj mode: stg-nvim disabled (jj replaces the stacked-git workflow).
+return {}
+{% endif %}
