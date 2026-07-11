@@ -53,6 +53,101 @@ map("n", "<leader>ga", "<cmd>J abandon<CR>", { desc = "jj abandon <change>" })
 map("n", "<leader>gu", "<cmd>J undo<CR>", { desc = "jj undo" })
 map("n", "<leader>gU", "<cmd>J redo<CR>", { desc = "jj redo" })
 
+-- gm: pick a bookmark/branch -> jj new <1> @ -> describe -m "merge <1st_line[:40]> into <@_1st_line[:40]>"
+map("n", "<leader>gm", function()
+  _with_jj_repo(function()
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    local utils = require("jj.utils")
+    local runner = require("jj.core.runner")
+    local bookmarks = utils.get_all_bookmarks()
+    if #bookmarks == 0 then
+      vim.notify("No bookmarks found to merge", vim.log.levels.WARN)
+      return
+    end
+    vim.ui.select(bookmarks, {
+      prompt = "Merge into @:",
+    }, function(choice)
+      if not choice then return end
+      local name = vim.fn.trim(choice)
+      local function first_line(text, limit)
+        if not text or text == "" then return "" end
+        local line = vim.split(text, "\n")[1] or ""
+        line = vim.trim(line)
+        if line == "" then return "" end
+        if limit and #line > limit then return line:sub(1, limit) .. "..." end
+        return line
+      end
+      local b_desc = runner.execute_command("jj log -r " .. vim.fn.shellescape(name) .. " --no-graph -T 'description' 2>/dev/null", nil, nil, true)
+      local c_desc = runner.execute_command("jj log -r @ --no-graph -T 'description' 2>/dev/null", nil, nil, true)
+      local msg = "merge " .. first_line(b_desc, 40) .. " into " .. first_line(c_desc, 40)
+      runner.execute_command_async("jj new " .. vim.fn.shellescape(name) .. " @", function()
+        runner.execute_command_async("jj describe -m " .. vim.fn.shellescape(msg), function()
+          utils.notify("Merged " .. name .. " into @", vim.log.levels.INFO)
+          if require("jj.ui.terminal").is_log_buffer_open() then
+            require("jj.cmd").log({})
+          end
+        end, "Error setting merge description")
+      end, "Error merging")
+    end)
+  end)
+end, { desc = "jj: pick <bookmark>; jj new <1> @; jj describe -m \"merge <...>\"" })
+
+-- gM: list all heads (including anonymous) -> pick one -> jj new <1> @ (merge)
+map("n", "<leader>gM", function()
+  _with_jj_repo(function()
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    local runner = require("jj.core.runner")
+    local utils = require("jj.utils")
+    local out = runner.execute_command("jj log -r 'heads(all())' --no-graph -T 'commit_id.shortest(12) \"\\t\" if(bookmarks, separate(\" \", bookmarks), \"\") \"\\t\" description.first_line()' 2>/dev/null", nil, nil, true)
+    if not out or out == "" then
+      vim.notify("No heads found", vim.log.levels.WARN)
+      return
+    end
+    local items = {}
+    for _, line in ipairs(vim.split(out, "\n")) do
+      line = vim.trim(line)
+      if line ~= "" then
+        local parts = vim.split(line, "\t")
+        local cid, bms, desc = parts[1] or "", parts[2] or "", parts[3] or ""
+        if bms ~= "@" then
+          local rev = (bms ~= "" and bms) or cid
+          local label = (bms ~= "" and bms) or cid
+          table.insert(items, { rev = rev, label = label .. "  " .. desc })
+        end
+      end
+    end
+    if #items == 0 then
+      vim.notify("No heads to merge", vim.log.levels.WARN)
+      return
+    end
+    vim.ui.select(items, {
+      prompt = "Merge into @:",
+      format_item = function(item) return item.label end,
+    }, function(choice)
+      if not choice then return end
+      local function first_line(text, limit)
+        if not text or text == "" then return "" end
+        local line = vim.split(text, "\n")[1] or ""
+        line = vim.trim(line)
+        if line == "" then return "" end
+        if limit and #line > limit then return line:sub(1, limit) .. "..." end
+        return line
+      end
+      local b_desc = runner.execute_command("jj log -r " .. vim.fn.shellescape(choice.rev) .. " --no-graph -T 'description' 2>/dev/null", nil, nil, true)
+      local c_desc = runner.execute_command("jj log -r @ --no-graph -T 'description' 2>/dev/null", nil, nil, true)
+      local msg = "merge " .. first_line(b_desc, 40) .. " into " .. first_line(c_desc, 40)
+      runner.execute_command_async("jj new " .. vim.fn.shellescape(choice.rev) .. " @", function()
+        runner.execute_command_async("jj describe -m " .. vim.fn.shellescape(msg), function()
+          utils.notify("Merged " .. choice.rev .. " into @", vim.log.levels.INFO)
+          if require("jj.ui.terminal").is_log_buffer_open() then
+            require("jj.cmd").log({})
+          end
+        end, "Error setting merge description")
+      end, "Error merging")
+    end)
+  end)
+end, { desc = "jj: heads(all()) -> pick -> jj new <1> @; jj describe -m \"merge <...>\"" })
+
 -- gbb: list bookmarks -> pick one -> jj edit <1>
 map("n", "<leader>gbb", function()
   _with_jj_repo(function()
@@ -79,6 +174,14 @@ map("n", "<leader>gbb", function()
     end)
   end)
 end, { desc = "jj bookmark list -> pick -> jj edit <1>" })
+
+-- gbB: show all heads (including anonymous) for browsing; e/<CR> to jump
+map("n", "<leader>gbB", function()
+  _with_jj_repo(function()
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    require("jj.cmd").log({ revisions = "heads(all())" })
+  end)
+end, { desc = "jj log -r 'heads(all())' (all heads)" })
 
 -- gbc: prompt <name> -> prompt <revset> -> jj b c <1> -r <2>
 map("n", "<leader>gbc", function()
