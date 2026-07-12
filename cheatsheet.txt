@@ -158,6 +158,7 @@ Workspace from git PR | <leader>gwp", function()
 jj git init | initiaze repo
 git tag | add tag
 q | quit jujutsu window
+interactive regase | gl + r (on line or multiple visual ones ones)
 ## Aliases (.aliases)
 Stage all conflicts as resolved (alias) | git-resolve 
 Stage all conflicts as resolved and refresh (alias) | stg-resolve 

@@ -1,7 +1,7 @@
 {% if system_tools.jj %}
 -- jj.nvim leader mappings. Mirror the neogit g-prefix (neogit is gated off in jj
--- mode, so no clash). The :J command maps auto-load the lazy plugin; the lua
--- callbacks trigger load explicitly before calling the jj.cmd API.
+-- mode, so no clash). Uses :JJ (alias for :J) to avoid conflict with cmd_bookmarks'
+-- :J command. The lua callbacks trigger load explicitly via lazy.load.
 -- Within the log/status buffers, jj.nvim's own keys apply (e/d/s/r/b/...).
 local map = vim.keymap.set
 
@@ -31,27 +31,27 @@ local function _with_jj_repo(fn)
 end
 
 --              key        command / pipeline                        desc
-map("n", "<leader>gg", "<cmd>J status<CR>", { desc = "jj status" })
-map("n", "<leader>gl", "<cmd>J log<CR>", { desc = "jj log" })
+map("n", "<leader>gg", "<cmd>JJ status<CR>", { desc = "jj status" })
+map("n", "<leader>gl", "<cmd>JJ log<CR>", { desc = "jj log" })
 map("n", "<leader>gkg", function()
   _with_jj_repo(function()
     require("lazy").load({ plugins = { "jj.nvim" } })
     require("jj.cmd").log({ revisions = "mutable()" })
   end)
 end, { desc = "jj log -r mutable()" })
-map("n", "<leader>gd", "<cmd>Jdiff<CR>", { desc = "jj diff" })
-map("n", "<leader>gD", "<cmd>Jhdiff<CR>", { desc = "jj diff (horizontal)" })
-map("n", "<leader>gn", "<cmd>J new<CR>", { desc = "jj new [<parent>]" })
-map("n", "<leader>gN", "<cmd>J new -B @<CR>", { desc = "jj new -B @ (new + bookmark)" })
-map("n", "<leader>gc", "<cmd>J commit<CR>", { desc = "jj commit \"<description>\"" })
-map("n", "<leader>ge", "<cmd>J describe<CR>", { desc = "jj describe [<change>]" })
-map("n", "<leader>grs", "<cmd>J squash<CR>", { desc = "jj squash" })
-map("n", "<leader>grd", "<cmd>J rebase<CR>", { desc = "jj rebase -d <destination>" })
-map("n", "<leader>gS", "<cmd>J split<CR>", { desc = "jj split [<change>]" })
-map("n", "<leader>gR", "<cmd>J resolve<CR>", { desc = "jj resolve [<files>...]" })
-map("n", "<leader>ga", "<cmd>J abandon<CR>", { desc = "jj abandon <change>" })
-map("n", "<leader>gu", "<cmd>J undo<CR>", { desc = "jj undo" })
-map("n", "<leader>gU", "<cmd>J redo<CR>", { desc = "jj redo" })
+map("n", "<leader>gd", "<cmd>JJdiff<CR>", { desc = "jj diff" })
+map("n", "<leader>gD", "<cmd>JJhdiff<CR>", { desc = "jj diff (horizontal)" })
+map("n", "<leader>gn", "<cmd>JJ new<CR>", { desc = "jj new [<parent>]" })
+map("n", "<leader>gN", "<cmd>JJ new -B @<CR>", { desc = "jj new -B @ (new + bookmark)" })
+map("n", "<leader>gc", "<cmd>JJ commit<CR>", { desc = "jj commit \"<description>\"" })
+map("n", "<leader>ge", "<cmd>JJ describe<CR>", { desc = "jj describe [<change>]" })
+map("n", "<leader>grs", "<cmd>JJ squash<CR>", { desc = "jj squash" })
+map("n", "<leader>grd", "<cmd>JJ rebase<CR>", { desc = "jj rebase -d <destination>" })
+map("n", "<leader>gS", "<cmd>JJ split<CR>", { desc = "jj split [<change>]" })
+map("n", "<leader>gR", "<cmd>JJ resolve<CR>", { desc = "jj resolve [<files>...]" })
+map("n", "<leader>ga", "<cmd>JJ abandon<CR>", { desc = "jj abandon <change>" })
+map("n", "<leader>gu", "<cmd>JJ undo<CR>", { desc = "jj undo" })
+map("n", "<leader>gU", "<cmd>JJ redo<CR>", { desc = "jj redo" })
 
 -- gm: pick a bookmark/branch -> jj new <1> @ -> describe -m "merge <1st_line[:40]> into <@_1st_line[:40]>"
 map("n", "<leader>gm", function()
@@ -191,9 +191,68 @@ map("n", "<leader>gbc", function()
   end)
 end, { desc = "jj b c <name> -r <revset>" })
 
-map("n", "<leader>gB", "<cmd>J annotate<CR>", { desc = "jj annotate <file>" })
-map("n", "<leader>gp", "<cmd>J push<CR>", { desc = "jj git push [--bookmark <1>] [-r <remote>]" })
-map("n", "<leader>gf", "<cmd>J fetch<CR>", { desc = "jj git fetch [-r <remote>]" })
-map("n", "<leader>go", "<cmd>J open_pr<CR>", { desc = "jj log -r @ -T bookmarks; open browser <url>" })
-map("n", "<leader>gw", "<cmd>Jbrowse<CR>", { desc = "jj: open file on remote in browser" })
+-- gbC: pick bookmark (topo-sorted) -> jj b m <1> --to @ -B (move to @)
+map("n", "<leader>gbC", function()
+  _with_jj_repo(function()
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    local runner = require("jj.core.runner")
+    local utils = require("jj.utils")
+
+    -- Get topo-sorted bookmarks: earliest parents first
+    local out = runner.execute_command(
+      "jj log -r 'all()' --no-graph -T 'if(bookmarks, separate(\" \", bookmarks) .. \"\\n\", \"\")' --reverse 2>/dev/null",
+      nil, nil, true
+    )
+    local ordered = {}
+    if out then
+      for _, bm in ipairs(vim.split(out, "\n")) do
+        bm = vim.trim(bm)
+        if bm ~= "" and not ordered[bm] then
+          ordered[bm] = true
+        end
+      end
+    end
+
+    -- Get full bookmark list and sort by topo order
+    local bookmarks = utils.get_all_bookmarks()
+    local seen = {}
+    local sorted = {}
+    for _, bm in ipairs(bookmarks) do
+      if ordered[bm] and not seen[bm] then
+        table.insert(sorted, bm)
+        seen[bm] = true
+      end
+    end
+    for _, bm in ipairs(bookmarks) do
+      if not seen[bm] then
+        table.insert(sorted, bm)
+        seen[bm] = true
+      end
+    end
+
+    if #sorted == 0 then
+      vim.notify("No bookmarks to move", vim.log.levels.WARN)
+      return
+    end
+
+    vim.ui.select(sorted, {
+      prompt = "Move bookmark to @:",
+    }, function(choice)
+      if not choice then return end
+      local name = vim.fn.trim(choice)
+      runner.execute_command_async("jj b m " .. vim.fn.shellescape(name) .. " --to @ -B", function()
+        utils.notify("Moved bookmark " .. name .. " to @", vim.log.levels.INFO)
+        if require("jj.ui.terminal").is_log_buffer_open() then
+          require("jj.cmd").log({})
+        end
+      end, "Error moving bookmark")
+    end)
+  end)
+end, { desc = "jj: pick <bookmark>; jj b m <1> --to @ -B" })
+
+map("n", "<leader>gB", "<cmd>JJ annotate<CR>", { desc = "jj annotate <file>" })
+map("n", "<leader>gp", "<cmd>JJ push<CR>", { desc = "jj git push [--bookmark <1>] [-r <remote>]" })
+map("n", "<leader>gf", "<cmd>JJ fetch<CR>", { desc = "jj git fetch [-r <remote>]" })
+map("n", "<leader>go", "<cmd>JJ open_pr<CR>", { desc = "jj log -r @ -T bookmarks; open browser <url>" })
+map("n", "<leader>gw", "<cmd>JJbrowse<CR>", { desc = "jj: open file on remote in browser" })
 {% endif %}
