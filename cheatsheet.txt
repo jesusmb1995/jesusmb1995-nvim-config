@@ -197,3 +197,18 @@ Change terminal (tmux compatible) | <C-b><arrows>
 Yank/copy link | yf
 Click | f
 Open new tab | <S-f>
+## nnn (terminal file browser)
+Go into shell/cmd prompt (type `zsh` to open a shell); <C-D> quits that terminal | ]
+Filter entries by name (incremental type-to-filter) | /
+Show nnn help (lists all keys) | ?
+Select / deselect all entries | a
+Toggle selection (mark multiple entries) | space
+Open entry in $EDITOR | e
+Delete selected file | x
+Delete selected file/dir recursively (rm -rf) | X
+Show details of entry | d
+Move selected/copied entry here | v
+Paste selected/copied entry here | p
+Spawn a shell in current directory | !
+Select/run a plugin | ;
+Run dragdrop plugin (open floating file picker) | ;d
