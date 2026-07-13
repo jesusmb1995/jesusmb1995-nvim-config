@@ -234,5 +234,9 @@
   "which-key.nvim": {
     "branch": "main",
     "commit": "3aab2147e74890957785941f0c1ad87d0a44c15a"
+  },
+  "quicksheet": {
+    "branch": "master",
+    "commit": "1ea00b83225ca066f9de7c7831b9d1ea40346e6c"
   }
 }
