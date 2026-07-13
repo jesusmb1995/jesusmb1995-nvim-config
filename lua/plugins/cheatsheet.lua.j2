@@ -1,3 +1,4 @@
+{% if features.quicksheet | default('') != 'true' %}
 return {
   "sudormrfbin/cheatsheet.nvim",
   dependencies = { 'nvim-telescope/telescope.nvim' },
@@ -9,3 +10,6 @@ return {
     { "<leader>?", "<cmd>Cheatsheet<CR>", desc = "Cheatsheet (searchable)" },
   },
 }
+{% else %}
+return {}
+{% endif %}
