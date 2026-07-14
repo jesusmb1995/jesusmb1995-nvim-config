@@ -41,4 +41,25 @@ function M.get_enabled_tools()
   return tools
 end
 
+-- Default agent CLI tool = highest-priority ENABLED tool, decided directly
+-- here (config priority) so the agent terminal works before :AiSelect or kv
+-- have been used. Reorder these branches to change the default.
+{%- if ai_tools.claude %}
+M.default_tool = "claude"
+{%- elif ai_tools.cursor %}
+M.default_tool = "agent"
+{%- elif ai_tools.codex %}
+M.default_tool = "codex"
+{%- elif ai_tools.gemini %}
+M.default_tool = "gemini"
+{%- elif ai_tools.agy %}
+M.default_tool = "agy"
+{%- elif ai_tools.opencode %}
+M.default_tool = "opencode"
+{%- elif ai_tools.kilocode %}
+M.default_tool = "kilocode"
+{%- else %}
+M.default_tool = nil
+{%- endif %}
+
 return M

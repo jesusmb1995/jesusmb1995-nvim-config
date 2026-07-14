@@ -103,6 +103,37 @@ function _G.register_warm_workspace()
   end
 end
 
-vim.api.nvim_create_autocmd({"VimEnter", "DirChanged"}, {
+-- Ensure the tmux warm daemon is running. Neovim can be launched directly
+-- (i3 $mod+g -> `st-zsh -e nvim`) without a shell that sources
+-- .zshrc/.bashrc, so the daemon may not have been started. Bring it up here
+-- so <C-l> can always attach to the pre-warmed agent@<hash> session.
+function _G.ensure_warm_daemon()
+  local pid_file = "/tmp/tmux_warm_daemon.pid"
+  local running = false
+  local f = io.open(pid_file, "r")
+  if f then
+    local pid = f:read("*l")
+    f:close()
+    if pid and pid ~= "" then
+      if os.execute("kill -0 " .. pid .. " 2>/dev/null") == 0 then
+        running = true
+      end
+    end
+  end
+  if not running then
+    local daemon = vim.fn.expand("~") .. "/.tmux_warm_daemon/tmux_warm_daemon"
+    if vim.fn.executable(daemon) == 1 then
+      vim.fn.jobstart({ daemon }, { detach = true, stdout = "/dev/null", stderr = "/dev/null" })
+    end
+  end
+end
+
+vim.api.nvim_create_autocmd("VimEnter", {
+  callback = function()
+    ensure_warm_daemon()
+    register_warm_workspace()
+  end,
+})
+vim.api.nvim_create_autocmd("DirChanged", {
   callback = register_warm_workspace,
 })
