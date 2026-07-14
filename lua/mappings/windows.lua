@@ -15,8 +15,8 @@ local function equalize_with_neighbor(direction)
   vim.api.nvim_win_set_width(cur_win, math.floor((cur_width + neighbor_width) / 2))
 end
 
-map("n", "<leader>wE", function() equalize_with_neighbor("left") end, { desc = "Equalize width with left window", silent = true })
-map("n", "<leader>we", function() equalize_with_neighbor("right") end, { desc = "Equalize width with right window", silent = true })
+map("n", "<leader>we", function() equalize_with_neighbor("left") end, { desc = "Equalize width with left window", silent = true })
+map("n", "<leader>wE", function() equalize_with_neighbor("right") end, { desc = "Equalize width with right window", silent = true })
 
 map("n", "<leader>np", ":NoNeckPain<CR>", { noremap = true, silent = true, desc = "No neck pain toggle" })
 
