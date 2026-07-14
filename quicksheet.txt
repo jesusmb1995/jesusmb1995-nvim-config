@@ -14,7 +14,7 @@ rerun last command | r<enter>
 ## Debugging
 coredumpctl list | list available core dumps
 coredumpctl debug <PID> | attach to specific core dump
-## Regolith
+## Regolith/i3
 Convert to floating window | <Win-shift-f>
 Convert to scratchpad | <Win-C-m>
 Move/show scratchpad | <Win-C-a>
@@ -24,6 +24,7 @@ Close window | <Win-Q>
 Open terminal | <Win-Enter>
 Open browser | <Win-shift-Enter>
 Open file-tree explorer | <Win-shift-n>
+Toggle between foreground (floating) and background | <Win-space>
 ## Vim 
 Start recording macro | q[letter] 
 Stop recording macro | q
