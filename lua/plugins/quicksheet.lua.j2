@@ -1,7 +1,12 @@
 {% if features.quicksheet | default('') == 'true' %}
+-- quicksheet is host-cloned (private repo) and staged into the nvim lazy cache
+-- by user/repo-hooks/generate_quicksheet.ab at the pinned commit. Declaring it
+-- as a local `dir=` plugin means the plugin pre-fetch skips the network fetch
+-- of this private repo entirely; lazy.nvim loads it from disk at runtime.
 return {
   {
-    url = "https://github.com/jesusmb1995/quicksheet",
+    dir = vim.fn.stdpath("data") .. "/lazy/quicksheet",
+    name = "quicksheet",
     lazy = true,
     cmd = { "QuickSheet", "QuickEdit", "QuickUpdate" },
     keys = {
