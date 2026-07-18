@@ -1,17 +1,14 @@
--- External IDE editors. Gated on features (features.cursor_ide / features.clion),
--- NOT ai_tools.cursor (which is the Cursor *CLI* agent tool, a different thing).
--- Keep the top-level `local map = vim.keymap.set` so the file always touches a
--- global and is never classified "dead" + pruned by the post-render hook when
--- all IDE features are off.
-local map = vim.keymap.set
-
-{% if features.cursor_ide | default('') == 'true' %}
+{# External IDE editors. Gated on features.cursor_ide / features.clion (default
+   off). NOTE: this is NOT ai_tools.cursor, which is the Cursor *CLI* agent tool.
+   When no IDE feature is enabled this file renders empty and is pruned by the
+   nvim post-render hook (dead-lua cleanup); mappings/init.lua requires it via
+   pcall so a missing file is harmless. #}
+{%- if features.cursor_ide | default('') == 'true' %}
 -- Cursor IDE: open folder + file, start new chat
+local map = vim.keymap.set
 map("n", "<leader><C-S-l>", function()
-  -- Get current directory and file
   local cwd = vim.fn.getcwd()
   local current_file = vim.fn.expand "%:p"
-  -- Open folder and file in Cursor, then trigger new chat
   local system_command = "cursor "
     .. cwd
     .. " --goto "
@@ -19,37 +16,21 @@ map("n", "<leader><C-S-l>", function()
     .. ":"
     .. vim.fn.line "."
     .. " --command workbench.action.chat.newChat 2> /dev/null & disown || true"
-  -- print(system_command)
   vim.fn.system(system_command)
 end, { desc = "Open folder and file in Cursor, start new chat" })
 {% endif %}
-
-{% if features.clion | default('') == 'true' %}
--- Create a command to open current file in CLion in normal mode
+{%- if features.clion | default('') == 'true' %}
+-- Open current file in CLion
 vim.api.nvim_create_user_command("Intellij", function()
-  -- Get current file path, line number, and column
   local file_path = vim.fn.expand "%:p"
   local line_number = vim.fn.line "."
   local column_number = vim.fn.col "."
-
-  -- Find the git root or use the current directory as the project root
   local project_root = vim.fn.systemlist("git rev-parse --show-toplevel")[1]
-  if vim.v.shell_error ~= 0 then
-    project_root = vim.fn.getcwd()
-  end
-
-  -- Construct the CLion command with parameters
-  -- Using --line and --column but also explicitly specify the project directory
-  -- TODO: Detect other file types and open them in other IDEs
+  if vim.v.shell_error ~= 0 then project_root = vim.fn.getcwd() end
   local command = string.format(
     "clion --project %s --line %d --column %d %s",
-    vim.fn.shellescape(project_root),
-    line_number,
-    column_number,
-    vim.fn.shellescape(file_path)
-  )
-
-  -- Execute the command
+    vim.fn.shellescape(project_root), line_number, column_number,
+    vim.fn.shellescape(file_path))
   vim.fn.jobstart(command, {
     detach = true,
     on_stderr = function(_, data)
@@ -58,10 +39,7 @@ vim.api.nvim_create_user_command("Intellij", function()
       end
     end,
   })
-
   vim.notify("Opening file in CLion...", vim.log.levels.INFO)
 end, {})
-
--- Optionally, create a keybinding for the command
 vim.keymap.set("n", "<leader>ic", ":Intellij<CR>", { noremap = true, silent = true, desc = "Open in CLion" })
 {% endif %}
