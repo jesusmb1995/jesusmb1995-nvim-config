@@ -1,3 +1,4 @@
+{% if not system_tools.jj %}
 -- Clang-tidy log parser: ClangTidyShowLog, ClangTidyDiff (from GitHub)
 return {
   url = "https://github.com/jesusmb1995/nvim-clang-tidy-analysis",
@@ -11,3 +12,4 @@ return {
     "ClangTidyGenerateDiff",
   },
 }
+{% endif %}
