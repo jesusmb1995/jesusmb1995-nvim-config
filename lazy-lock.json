@@ -117,7 +117,7 @@
   },
   "nvim-clang-tidy-analysis": {
     "branch": "main",
-    "commit": "279347959f19055b3fc5ccb6867e05fd2e6a7b01"
+    "commit": "0545f6cd1e3514f56a2d1dcf17b8cf3ac6da5538"
   },
   "nvim-cmp": {
     "branch": "main",
