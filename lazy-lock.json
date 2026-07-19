@@ -175,10 +175,6 @@
     "branch": "master",
     "commit": "74b06c6c75e4eeb3108ec01852001636d85a932b"
   },
-  "remote-nvim.nvim": {
-    "branch": "main",
-    "commit": "9992c2fb8bf4f11aca2c8be8db286b506f92efcb"
-  },
   "smear-cursor.nvim": {
     "branch": "main",
     "commit": "9e9378d6ee34bb3782e0e8c63d9ec8ca618b479b"
