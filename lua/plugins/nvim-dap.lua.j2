@@ -1,3 +1,7 @@
+{% if features.github_binaries | default("true") != "true" %}
+-- DAP disabled in employee/disable_some mode (debug adapters cannot be installed there).
+return {}
+{% else %}
 local last_dap_config = nil
 
 return {
@@ -143,3 +147,5 @@ return {
     end
   end,
 }
+
+{% endif %}

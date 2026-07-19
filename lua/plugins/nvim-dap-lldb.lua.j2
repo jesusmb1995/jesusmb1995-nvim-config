@@ -1,3 +1,7 @@
+{% if features.github_binaries | default("true") != "true" %}
+-- Disabled in employee/disable_some mode.
+return {}
+{% else %}
 return {
   "julianolf/nvim-dap-lldb",
   lazy = true,
@@ -8,3 +12,5 @@ return {
     { '<leader>Vc', function() require("dap-lldb").setup() end, "Setup DAP LLDB" }
   },
 }
+
+{% endif %}
