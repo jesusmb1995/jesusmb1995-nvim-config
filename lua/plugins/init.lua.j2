@@ -14,6 +14,7 @@ function GET_INIT_CONFIG()
         end,
       },
 
+{% if features.treesitter | default('true') == 'true' %}
       -- Since its lazy, might still need e.g. ":TSInstall jsonnet" (to enable hightlighting)
       {
         "nvim-treesitter/nvim-treesitter",
@@ -32,6 +33,26 @@ function GET_INIT_CONFIG()
           },
         },
       },
+{% else %}
+      -- treesitter disabled (features.treesitter == 'false'): rely on
+      -- neovim core `syntax enable` + bundled vim.treesitter parsers.
+      -- enabled=false overrides NvChad's spec too, so ":TSInstallAll"
+      -- never runs -> no runtime parser fetch/compile.
+      { "nvim-treesitter/nvim-treesitter", enabled = false },
+
+      -- telescope previews normally use treesitter; with the plugin off,
+      -- disable the treesitter previewer so it falls back to regex hl.
+      {
+        "nvim-telescope/telescope.nvim",
+        opts = function(_, opts)
+          opts = opts or {}
+          opts.defaults = opts.defaults or {}
+          opts.defaults.preview = opts.defaults.preview or {}
+          opts.defaults.preview.treesitter = false
+          return opts
+        end,
+      },
+{% endif %}
 
 {% if languages.amber %}
       {                                                                                                                       

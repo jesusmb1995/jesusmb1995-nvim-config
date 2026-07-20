@@ -57,7 +57,66 @@ dofile(vim.g.base46_cache .. "defaults")
 dofile(vim.g.base46_cache .. "statusline")
 
 require "options"
+{% if features.treesitter | default('true') != 'true' %}
+-- treesitter plugin disabled: rely on neovim's built-in regex syntax engine.
+-- NvChad's base46 is treesitter-first and leaves the classic cType/cppStructure/
+-- Statement/Comment groups nearly uncolored ("whitish"). Instead of loading a
+-- *whole* colorscheme (which repaints Normal/StatusLine/floats and would clobber
+-- the NvChad UI), we ONLY repaint the regex-syntax highlight groups that `syntax
+-- enable` actually uses. UI chrome (St_*, NvimTree*, NormalFloat, dashboard)
+-- does not use these groups, so the NvChad UI is left fully intact -- the theme
+-- only shows up inside opened code buffers. These are plain nvim_set_hl calls:
+-- 100% fetch-free (no runtime/install fetch), audit-clean.
+vim.cmd("syntax enable")
+local function _legacy_syntax_hl()
+  local set = function(g, o) pcall(vim.api.nvim_set_hl, 0, g, o) end
+  set("Comment",    { fg = "#928374", italic = true })
+  set("Constant",   { fg = "#d3869b" })
+  set("String",     { fg = "#b8bb26" })
+  set("Character",  { fg = "#b8bb26" })
+  set("Number",     { fg = "#d3869b" })
+  set("Boolean",    { fg = "#d3869b" })
+  set("Float",      { fg = "#d3869b" })
+  set("Identifier", { fg = "#83a598" })
+  set("Function",   { fg = "#8ec07c" })
+  set("Statement",  { fg = "#fb4934" })
+  set("Keyword",    { fg = "#fb4934" })
+  set("Conditional",{ fg = "#fb4934" })
+  set("Repeat",     { fg = "#fb4934" })
+  set("Label",      { fg = "#fb4934" })
+  set("Operator",   { fg = "#ebdbb2" })
+  set("Type",       { fg = "#fabd2f" })
+  set("Structure",  { fg = "#fabd2f" })
+  set("StorageClass", { fg = "#fabd2f" })
+  set("PreProc",    { fg = "#fe8019" })
+  set("Include",    { fg = "#fe8019" })
+  set("Define",     { fg = "#fe8019" })
+  set("Macro",      { fg = "#fe8019" })
+  set("Special",    { fg = "#fe8019" })
+  set("SpecialChar",{ fg = "#fe8019" })
+  set("Todo",       { fg = "#fabd2f", bold = true })
+  set("Underlined", { fg = "#83a598", underline = true })
+  set("Error",      { fg = "#fb4934", bold = true })
+  set("Debug",      { fg = "#928374" })
+end
+_legacy_syntax_hl()
+-- re-apply after colorscheme loads / on new code buffers, in case a plugin
+-- reset groups (no-op for non-code buffers, so UI stays untouched).
+vim.api.nvim_create_autocmd({ "FileType", "ColorScheme" }, {
+  pattern = "*",
+  callback = function()
+    if vim.api.nvim_get_option_value("buftype", { buf = 0 }) ~= "" then return end
+    _legacy_syntax_hl()
+  end,
+})
+{% endif %}
 require "nvchad.autocmds"
+{% if features.treesitter | default('true') != 'true' %}
+-- NvChad's autocmd group (NvFilePost) fires pcall(vim.treesitter.start) on every
+-- buffer; with the plugin off it has no parser and silently no-ops, so drop the
+-- group entirely. Done after require "nvchad.autocmds" (which created it).
+pcall(vim.api.nvim_del_augroup_by_name, "NvFilePost")
+{% endif %}
 
 vim.schedule(function()
   require "mappings"
