@@ -1,3 +1,5 @@
+{% if features.extra_devtools | default('true') == 'true' -%}
+{% raw -%}
 return {
   'linux-cultist/venv-selector.nvim',
   dependencies = { 'neovim/nvim-lspconfig', 'nvim-telescope/telescope.nvim', 'mfussenegger/nvim-dap-python' },
@@ -10,3 +12,8 @@ return {
     require('venv-selector').setup {}
   end
 }
+
+{% endraw -%}
+{%- else -%}
+return {}
+{%- endif -%}
