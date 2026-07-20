@@ -22,6 +22,8 @@ function GET_INIT_CONFIG()
             "vim",
             "lua",
             "vimdoc",
+            "markdown",
+            "markdown_inline",
 {% for lang in ['html', 'css', 'cpp', 'rust', 'javascript', 'typescript', 'yaml', 'json', 'toml', 'cmake', 'jsonnet', 'jinja'] %}
 {%   if languages[lang] | default(false) %}
             "{{ lang }}",
