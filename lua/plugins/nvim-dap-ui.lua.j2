@@ -1,0 +1,11 @@
+{% if features.extra_devtools | default('true') == 'true' -%}
+{% raw -%}
+return {
+  "rcarriga/nvim-dap-ui",
+  requires = { "mfussenegger/nvim-dap", "nvim-neotest/nvim-nio" },
+}
+
+{% endraw -%}
+{%- else -%}
+return {}
+{%- endif -%}

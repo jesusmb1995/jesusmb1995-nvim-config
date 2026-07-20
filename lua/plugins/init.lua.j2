@@ -38,7 +38,7 @@ function GET_INIT_CONFIG()
       },      
 {%   endif %}
 
-{% if languages.bash or languages.lua %}
+{% if features.no_natives | default('false') != 'true' %}
       {
         "nvim-telescope/telescope-fzf-native.nvim",
         build = "make",

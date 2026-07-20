@@ -38,6 +38,11 @@ Buffer undo history | :UndoTreeToggle
 standalone vim temporary bookmark set | m<letter>
 jump to vim bookmark | '<letter>
 jump to vim bookrmak (with telescpe) | <leader>ma
+add/remove bookmark at current line | mm
+jump to next bookmark in buffer | mn
+jump to previous bookmark in buffer | mp
+show all bookmarks (toggle) | ma
+clear bookmarks in all buffers | :BookmarkClearAll
 ## Nv-chad
 Open floating terminal | <A-i>
 Collapse all (Tree, symbols, etc.) | W

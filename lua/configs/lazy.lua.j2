@@ -26,10 +26,11 @@ end
 return {
   defaults = { lazy = true },
   install = { colorscheme = { "nvchad" } },
-{% if ns.prefetch %}
+ {% if ns.prefetch %}
   checker = { enabled = false },
   change_detection = { notify = false },
-{% endif %}
+  frozen = true,
+ {% endif %}
 
   ui = {
     icons = {
