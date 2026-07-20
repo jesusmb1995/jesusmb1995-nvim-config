@@ -68,6 +68,12 @@ require "options"
 -- only shows up inside opened code buffers. These are plain nvim_set_hl calls:
 -- 100% fetch-free (no runtime/install fetch), audit-clean.
 vim.cmd("syntax enable")
+-- NOTE: Neovim bundles a "c" tree-sitter parser (/usr/lib/nvim/parser/c.so) but
+-- this config disrupts its auto-discovery, so `vim.treesitter.start()` silently
+-- fails on .c. To get native, fetch-free .c highlighting WITHOUT the
+-- nvim-treesitter plugin, run these two commands once (e.g. session/keymap):
+--   :lua vim.treesitter.language.add("c", { path = "/usr/lib/nvim/parser/c.so" })
+--   :lua vim.treesitter.start()
 local function _legacy_syntax_hl()
   local set = function(g, o) pcall(vim.api.nvim_set_hl, 0, g, o) end
   set("Comment",    { fg = "#928374", italic = true })
