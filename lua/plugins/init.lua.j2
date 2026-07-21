@@ -18,6 +18,8 @@ function GET_INIT_CONFIG()
       -- Prefetch mode: nvim 12+ ships its own highlight queries;
       -- no nvim-treesitter plugin needed. Parsers are compiled at
       -- runtime from vendored grammar source (configs/treesitter_bootstrap).
+      -- enabled=false overrides NvChad's own spec that pulls it in.
+      { "nvim-treesitter/nvim-treesitter", enabled = false },
 {% elif features.treesitter | default('true') == 'true' %}
       -- Since its lazy, might still need e.g. ":TSInstall jsonnet" (to enable highlighting)
       {
