@@ -15,20 +15,9 @@ function GET_INIT_CONFIG()
       },
 
 {% if features.prefetch_treesitter == 'true' %}
-      -- Prefetch mode: ship queries only; parsers come from grammars/ +
-      -- runtime compile (configs/treesitter_bootstrap). Install surface is
-      -- stripped at gen-time and blocked at runtime (treesitter_lock).
-      {
-        "nvim-treesitter/nvim-treesitter",
-        lazy = false,
-        opts = {
-          auto_install = false,
-          ensure_installed = {},
-          sync_install = false,
-          highlight = { enable = true },
-          parser_install_dir = vim.fn.stdpath("data") .. "/parsers",
-        },
-      },
+      -- Prefetch mode: nvim 12+ ships its own highlight queries;
+      -- no nvim-treesitter plugin needed. Parsers are compiled at
+      -- runtime from vendored grammar source (configs/treesitter_bootstrap).
 {% elif features.treesitter | default('true') == 'true' %}
       -- Since its lazy, might still need e.g. ":TSInstall jsonnet" (to enable highlighting)
       {

@@ -52,10 +52,6 @@ require("lazy").setup({
 
 require("lazy").setup(GET_INIT_CONFIG(_languages), lazy_config)
 
-{% if features.prefetch_treesitter == 'true' %}
-pcall(require, "configs.treesitter_lock")
-{% endif %}
-
 -- load theme
 dofile(vim.g.base46_cache .. "defaults")
 dofile(vim.g.base46_cache .. "statusline")
