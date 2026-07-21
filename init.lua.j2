@@ -39,6 +39,10 @@ local lazy_config = require "configs.lazy"
 -- load plugins
 local _languages = require "languages"
 
+{% if features.prefetch_treesitter == 'true' %}
+pcall(require, "configs.treesitter_bootstrap")
+{% endif %}
+
 require("lazy").setup({
   {
     "NvChad/NvChad",
@@ -49,8 +53,6 @@ require("lazy").setup({
 
   { import = "plugins" },
 }, lazy_config)
-
-require("lazy").setup(GET_INIT_CONFIG(_languages), lazy_config)
 
 -- load theme
 dofile(vim.g.base46_cache .. "defaults")
@@ -115,9 +117,6 @@ vim.api.nvim_create_autocmd({ "FileType", "ColorScheme" }, {
     _legacy_syntax_hl()
   end,
 })
-{% endif %}
-{% if features.prefetch_treesitter == 'true' %}
-pcall(require, "configs.treesitter_bootstrap")
 {% endif %}
 require "nvchad.autocmds"
 {% if features.treesitter | default('true') != 'true' %}

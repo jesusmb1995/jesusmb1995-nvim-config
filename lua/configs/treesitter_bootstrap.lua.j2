@@ -66,9 +66,154 @@ local function bootstrap_parsers()
 
     if vim.fn.filereadable(so) == 1 then
       pcall(vim.treesitter.language.add, lang, { path = so })
+
+      -- Load highlight/injection/locals queries from the vendored grammar's
+      -- queries/ dir. nvim 0.12 only bundles queries for vim-internal langs
+      -- (c, lua, vim, ...); cpp/python/etc. need their .scm files registered
+      -- here so vim.treesitter.query.get() finds them.
+      local qdir = src_dir .. "/queries"
+      if vim.fn.isdirectory(qdir) == 1 then
+        for _, qtype in ipairs({ "highlights", "injections", "locals", "folds" }) do
+          local qfile = qdir .. "/" .. qtype .. ".scm"
+          if vim.fn.filereadable(qfile) == 1 then
+            local content = table.concat(vim.fn.readfile(qfile), "\n")
+
+            -- Handle "; inherits:" directives (e.g. cpp inherits c). The cpp
+            -- highlights.scm only defines C++-specific additions; the base c
+            -- query provides keyword/function/type/etc. captures. Without
+            -- merging, cpp files get almost no highlighting. nvim-treesitter
+            -- does this automatically; we replicate it here.
+            local inherits = content:match(";%s*inherits:%s*([%w_,]+)")
+            if inherits then
+              for _, base_lang in ipairs(vim.split(inherits, ",")) do
+                base_lang = vim.trim(base_lang)
+                local base_qfile = src_root .. "/" .. base_lang .. "/queries/" .. qtype .. ".scm"
+                if vim.fn.filereadable(base_qfile) == 1 then
+                  local base_content = table.concat(vim.fn.readfile(base_qfile), "\n")
+                  content = base_content .. "\n" .. content
+                end
+              end
+            end
+
+            -- cpp doesn't declare "; inherits: c" in its query, but the cpp
+            -- grammar IS a superset of c — its highlights.scm only has C++-
+            -- specific captures. Force-merge the c base query for cpp so
+            -- basic syntax (int, return, if, for, ...) is highlighted.
+            if lang == "cpp" and qtype == "highlights" then
+              local c_qfile = src_root .. "/c/queries/highlights.scm"
+              if vim.fn.filereadable(c_qfile) == 1 then
+                local c_content = table.concat(vim.fn.readfile(c_qfile), "\n")
+                content = c_content .. "\n" .. content
+              end
+            end
+
+            pcall(vim.treesitter.query.set, lang, qtype, content)
+          end
+        end
+      end
     end
     ::continue::
   end
 end
 bootstrap_parsers()
+
+-- nvim 0.12 core highlighter resolves captures as @<name>.<lang>. base46
+-- (NvChad's colorscheme) only defines generic @<name>, so create links:
+-- @keyword.c → @keyword, @function.cpp → @function, etc. for every lang the
+-- highlighter might request. The capture names are the well-known tree-sitter
+-- standard set (see nvim-treesitter CONTRIBUTING.md). This avoids needing
+-- vim.treesitter.query.get() per language, which can fail when a parser has
+-- no bundled highlights.scm in the runtime query dirs.
+local ts_captures = {
+  -- identifiers &
+  "function", "method", "constructor", "field", "property",
+  "variable", "parameter", "type", "namespace", "class",
+  "constant", "enum", "enumMember", "member", "label",
+  -- operators / punctuation
+  "operator", "punctuation", "punctuationDelimiter", "punctuationBracket",
+  "punctuationSpecial",
+  -- literals
+  "string", "stringSpecial", "stringEscape", "stringRegexp",
+  "character", "characterSpecial",
+  "number", "numberFloat", "boolean",
+  "regex", "escape",
+  -- keywords
+  "keyword", "keywordConditional", "keywordRepeat", "keywordReturn",
+  "keywordException", "keywordFunction", "keywordOperator", "keywordImport",
+  "keywordStorage", "keywordType", "keywordModifier", "keywordDirective",
+  "keywordConstant", "keywordVariable", "keywordOther",
+  -- misc
+  "comment", "commentDocumentation", "commentError", "commentWarning",
+  "commentTodo", "commentNote",
+  "tag", "tagAttribute", "tagDelimiter",
+  "attribute", "preproc", "include", "define", "macro", "storageclass",
+  "structure", "typedef", "special", "specialComment",
+  "diagnostic", "diagnosticError", "diagnosticWarning", "diagnosticInfo",
+  "diagnosticHint", "diagnosticOk",
+  "diffAdd", "diffDelete", "diffChange",
+  "spell", "spellBad", "spellCap", "spellLocal", "spellMisspelled",
+  "conceal", "error", "warning", "info", "hint",
+  "markupHeadline", "markupHeading1", "markupHeading2", "markupHeading3",
+  "markupHeading4", "markupHeading5", "markupHeading6",
+  "markupBold", "markupItalic", "markupUnderline", "markupStrikethrough",
+  "markupQuote", "markupMath", "markupEnvironment",
+  "markupLink", "markupLinkLabel", "markupLinkText", "markupLinkUrl",
+  "markupList", "markupListChecked", "markupListUnchecked",
+  "markupRaw", "markupRawBlock", "markupRawInline",
+  "markupComment", "markupTodo",
+  "title", "url",
+}
+
+-- Load base46 treesitter/syntax cache IMMEDIATELY (not deferred). NvChad
+-- normally loads this inside the nvim-treesitter plugin config, which never
+-- runs with enabled=false. Must run before any buffer is opened so the
+-- highlighter finds real colors on the first on_range callback.
+pcall(dofile, vim.g.base46_cache .. "treesitter")
+pcall(dofile, vim.g.base46_cache .. "syntax")
+
+local ok_langs, langs = pcall(require, "languages")
+if ok_langs and type(langs) == "table" then
+  -- Collect only the capture names that base46 actually defined for "@<name>"
+  -- (so the link target has a real color). nvim auto-creates empty groups on
+  -- lookup, so check whether attributes are non-empty or it links somewhere.
+  local defined_names = {}
+  for _, name in ipairs(ts_captures) do
+    local id = vim.api.nvim_get_hl_id_by_name("@" .. name)
+    local hl = vim.api.nvim_get_hl(0, { id = id })
+    if hl and next(hl) ~= nil then
+      defined_names[#defined_names + 1] = name
+    end
+  end
+
+  for lang, on in pairs(langs) do
+    if on then
+      for _, name in ipairs(defined_names) do
+        pcall(vim.api.nvim_set_hl, 0, "@" .. name .. "." .. lang, {
+          link = "@" .. name,
+          default = true,
+        })
+      end
+    end
+  end
+
+  -- Explicitly start treesitter on FileType for every enabled language with a
+  -- compiled parser. NvChad's NvFilePost pcall(vim.treesitter.start) should do
+  -- this, but belt-and-suspenders: guarantees the highlighter attaches even if
+  -- NvFilePost was cleared or the filetype->lang mapping differs.
+  local ts_langs = {}
+  for lang, on in pairs(langs) do
+    if on and vim.fn.filereadable(vim.fn.stdpath("data") .. "/parsers/" .. lang .. ".so") == 1 then
+      ts_langs[lang] = true
+    end
+  end
+  vim.api.nvim_create_autocmd("FileType", {
+    pattern = "*",
+    callback = function(args)
+      local lang = vim.treesitter.language.get_lang(args.match)
+      if lang and ts_langs[lang] then
+        pcall(vim.treesitter.start, args.buf, lang)
+      end
+    end,
+  })
+end
 {% endif %}
