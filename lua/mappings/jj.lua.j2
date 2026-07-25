@@ -255,4 +255,71 @@ map("n", "<leader>gp", "<cmd>JJ push<CR>", { desc = "jj git push [--bookmark <1>
 map("n", "<leader>gf", "<cmd>JJ fetch<CR>", { desc = "jj git fetch [-r <remote>]" })
 map("n", "<leader>go", "<cmd>JJ open_pr<CR>", { desc = "jj log -r @ -T bookmarks; open browser <url>" })
 map("n", "<leader>gw", "<cmd>JJbrowse<CR>", { desc = "jj: open file on remote in browser" })
+
+map("n", "<leader>gbS", function()
+  _with_jj_repo(function()
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    local runner = require("jj.core.runner")
+    local out = runner.execute_command("jj log -r '::@ & bookmarks()' --no-graph -T 'separate(\" \", bookmarks)' --limit 1 2>/dev/null", nil, nil, true)
+    local bm = vim.trim(out or "")
+    if bm == "" then
+      vim.notify("No bookmark found in ancestors of @", vim.log.levels.WARN)
+      return
+    end
+    runner.execute_command_async("jj bookmark set " .. vim.fn.shellescape(bm) .. " -r @", function()
+      require("jj.utils").notify("Set " .. bm .. " to @", vim.log.levels.INFO)
+    end, "Error setting bookmark")
+  end)
+end, { desc = "jj: set current bookmark to @" })
+
+local function _do_push_with_bookmark(bm, utils, runner)
+  runner.execute_command_async("jj bookmark set " .. vim.fn.shellescape(bm) .. " -r @", function()
+    utils.notify("Set " .. bm .. " to @, pushing...", vim.log.levels.INFO)
+    runner.execute_command_async("jj git push", function()
+      utils.notify("Pushed " .. bm, vim.log.levels.INFO)
+    end, "Error pushing")
+  end, "Error setting bookmark")
+end
+
+local function _describe_then_push()
+  require("lazy").load({ plugins = { "jj.nvim" } })
+  local runner = require("jj.core.runner")
+  local utils = require("jj.utils")
+  vim.ui.input({ prompt = "Commit description: " }, function(input)
+    if not input or input == "" then
+      vim.notify("Aborted", vim.log.levels.WARN)
+      return
+    end
+    runner.execute_command_async("jj describe -m " .. vim.fn.shellescape(input), function()
+      utils.notify("Described @", vim.log.levels.INFO)
+      local bm_out = runner.execute_command("jj log -r '::@ & bookmarks()' --no-graph -T 'separate(\" \", bookmarks)' --limit 1 2>/dev/null", nil, nil, true)
+      local bm = vim.trim(bm_out or "")
+      if bm == "" then
+        vim.notify("No bookmark found in ancestors of @", vim.log.levels.WARN)
+        return
+      end
+      _do_push_with_bookmark(bm, utils, runner)
+    end, "Error describing @")
+  end)
+end
+
+map("n", "<leader>gP", function()
+  _with_jj_repo(function()
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    local runner = require("jj.core.runner")
+    local desc = runner.execute_command("jj log -r @ --no-graph -T 'description' 2>/dev/null", nil, nil, true)
+    if not desc or vim.trim(desc) == "" then
+      _describe_then_push()
+      return
+    end
+    local utils = require("jj.utils")
+    local out = runner.execute_command("jj log -r '::@ & bookmarks()' --no-graph -T 'separate(\" \", bookmarks)' --limit 1 2>/dev/null", nil, nil, true)
+    local bm = vim.trim(out or "")
+    if bm == "" then
+      vim.notify("No bookmark found in ancestors of @", vim.log.levels.WARN)
+      return
+    end
+    _do_push_with_bookmark(bm, utils, runner)
+  end)
+end, { desc = "jj: if empty, describe; then set bookmark to @ and push" })
 {% endif %}
