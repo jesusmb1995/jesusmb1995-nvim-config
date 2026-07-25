@@ -30,6 +30,16 @@ local function _with_jj_repo(fn)
   end
 end
 
+local function _get_current_bookmark(runner)
+  local out = runner.execute_command("jj log -r '::@ & bookmarks()' --no-graph -T 'bookmarks.map(|b| b.name()).join(\"\\n\")' --limit 1 2>/dev/null", nil, nil, true)
+  if not out then return nil end
+  for _, line in ipairs(vim.split(out, "\n")) do
+    line = vim.trim(line)
+    if line ~= "" then return line end
+  end
+  return nil
+end
+
 --              key        command / pipeline                        desc
 map("n", "<leader>gg", "<cmd>JJ status<CR>", { desc = "jj status" })
 map("n", "<leader>gl", "<cmd>JJ log<CR>", { desc = "jj log" })
@@ -200,7 +210,7 @@ map("n", "<leader>gbC", function()
 
     -- Get topo-sorted bookmarks: earliest parents first
     local out = runner.execute_command(
-      "jj log -r 'all()' --no-graph -T 'if(bookmarks, separate(\" \", bookmarks) .. \"\\n\", \"\")' --reverse 2>/dev/null",
+      "jj log -r 'all()' --no-graph -T 'if(bookmarks, bookmarks.map(|b| b.name()).join(\" \") .. \"\\n\", \"\")' --reverse 2>/dev/null",
       nil, nil, true
     )
     local ordered = {}
@@ -260,8 +270,7 @@ map("n", "<leader>gbS", function()
   _with_jj_repo(function()
     require("lazy").load({ plugins = { "jj.nvim" } })
     local runner = require("jj.core.runner")
-    local out = runner.execute_command("jj log -r '::@ & bookmarks()' --no-graph -T 'separate(\" \", bookmarks)' --limit 1 2>/dev/null", nil, nil, true)
-    local bm = vim.trim(out or "")
+    local bm = _get_current_bookmark(runner)
     if bm == "" then
       vim.notify("No bookmark found in ancestors of @", vim.log.levels.WARN)
       return
@@ -292,8 +301,7 @@ local function _describe_then_push()
     end
     runner.execute_command_async("jj describe -m " .. vim.fn.shellescape(input), function()
       utils.notify("Described @", vim.log.levels.INFO)
-      local bm_out = runner.execute_command("jj log -r '::@ & bookmarks()' --no-graph -T 'separate(\" \", bookmarks)' --limit 1 2>/dev/null", nil, nil, true)
-      local bm = vim.trim(bm_out or "")
+      local bm = _get_current_bookmark(runner)
       if bm == "" then
         vim.notify("No bookmark found in ancestors of @", vim.log.levels.WARN)
         return
@@ -313,8 +321,7 @@ map("n", "<leader>gP", function()
       return
     end
     local utils = require("jj.utils")
-    local out = runner.execute_command("jj log -r '::@ & bookmarks()' --no-graph -T 'separate(\" \", bookmarks)' --limit 1 2>/dev/null", nil, nil, true)
-    local bm = vim.trim(out or "")
+    local bm = _get_current_bookmark(runner)
     if bm == "" then
       vim.notify("No bookmark found in ancestors of @", vim.log.levels.WARN)
       return
