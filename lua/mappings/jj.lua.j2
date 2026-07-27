@@ -79,7 +79,20 @@ map("n", "<leader>grs", "<cmd>JJ squash<CR>", { desc = "jj squash" })
 map("n", "<leader>grd", "<cmd>JJ rebase<CR>", { desc = "jj rebase -d <destination>" })
 map("n", "<leader>gS", "<cmd>JJ split<CR>", { desc = "jj split [<change>]" })
 map("n", "<leader>gR", "<cmd>JJ resolve<CR>", { desc = "jj resolve [<files>...]" })
-map("n", "<leader>ga", "<cmd>JJ abandon<CR>", { desc = "jj abandon <change>" })
+-- ga: abandon current @ directly
+map("n", "<leader>ga", function()
+  _with_jj_repo(function()
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    local runner = require("jj.core.runner")
+    local utils = require("jj.utils")
+    runner.execute_command_async("jj abandon @", function()
+      utils.notify("Abandoned @", vim.log.levels.INFO)
+      if require("jj.ui.terminal").is_log_buffer_open() then
+        require("jj.cmd").log({})
+      end
+    end, "Error abandoning @")
+  end)
+end, { desc = "jj abandon @" })
 map("n", "<leader>gu", "<cmd>JJ undo<CR>", { desc = "jj undo" })
 map("n", "<leader>gU", "<cmd>JJ redo<CR>", { desc = "jj redo" })
 
