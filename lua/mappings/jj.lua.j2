@@ -52,7 +52,27 @@ end, { desc = "jj log -r mutable()" })
 map("n", "<leader>gd", "<cmd>JJdiff<CR>", { desc = "jj diff" })
 map("n", "<leader>gD", "<cmd>JJhdiff<CR>", { desc = "jj diff (horizontal)" })
 map("n", "<leader>gn", "<cmd>JJ new<CR>", { desc = "jj new [<parent>]" })
-map("n", "<leader>gN", "<cmd>JJ new -B @<CR>", { desc = "jj new -B @ (new + bookmark)" })
+-- gN: prompt <name> -> jj bookmark create <name> -r @
+map("n", "<leader>gN", function()
+  _with_jj_repo(function()
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    local runner = require("jj.core.runner")
+    local utils = require("jj.utils")
+    vim.ui.input({ prompt = "New bookmark name: " }, function(input)
+      if not input or vim.trim(input) == "" then
+        vim.notify("Aborted", vim.log.levels.WARN)
+        return
+      end
+      local name = vim.trim(input)
+      runner.execute_command_async("jj bookmark create " .. vim.fn.shellescape(name) .. " -r @", function()
+        utils.notify("Created bookmark " .. name .. " at @", vim.log.levels.INFO)
+        if require("jj.ui.terminal").is_log_buffer_open() then
+          require("jj.cmd").log({})
+        end
+      end, "Error creating bookmark")
+    end)
+  end)
+end, { desc = "jj bookmark create <name> -r @" })
 map("n", "<leader>gc", "<cmd>JJ commit<CR>", { desc = "jj commit \"<description>\"" })
 map("n", "<leader>ge", "<cmd>JJ describe<CR>", { desc = "jj describe [<change>]" })
 map("n", "<leader>grs", "<cmd>JJ squash<CR>", { desc = "jj squash" })
