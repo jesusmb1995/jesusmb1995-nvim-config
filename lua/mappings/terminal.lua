@@ -11,7 +11,6 @@
 -- a shell already sitting at /, e.g. a warm session that landed at /), so when
 -- getcwd is / or empty we fall back to the current file's git root / directory.
 -- See doc/tmux.md.
-local warm_shell = "env -u NVIM -u TMUX zsh"
 local map = vim.keymap.set
 
 local function file_root(file)
@@ -50,24 +49,30 @@ local function warm_cwd()
 end
 
 local warm_terms = {
-  { "<A-v>", { "n", "t" }, "toggle", { pos = "vsp", id = "vtoggleTerm" }, "toggleable vertical" },
-  { "<A-h>", { "n", "t" }, "toggle", { pos = "sp", id = "htoggleTerm" }, "toggleable horizontal" },
+  { "<leader>v", { "n", "t" }, "toggle", { pos = "vsp", id = "vtoggleTerm" }, "toggleable vertical" },
+  { "<C-g>", { "n", "t" }, "toggle", { pos = "sp", id = "htoggleTerm" }, "toggleable horizontal" },
   { "<A-i>", { "n", "t" }, "toggle", { pos = "float", id = "floatTerm" }, "floating" },
   { "<leader>h", "n", "new", { pos = "sp" }, "new horizontal" },
-  { "<leader>v", "n", "new", { pos = "vsp" }, "new vertical" },
 }
+
+-- Build the shell command for a warm terminal: attach to (or create) a tmux
+-- session on the warm-daemon DEFAULT socket. `env -u TMUX` detaches from the
+-- outer WM (-L wm) so this inner tmux is Ctrl+B-controlled and never nests into
+-- the WM. Replaces the old `env -u NVIM -u TMUX zsh` + oh-my-zsh autostart
+-- approach, which was unreliable in the nested two-tmux setup (autostart probes
+-- for warm-* sessions the daemon never creates). Each toggle reattaches to a
+-- persistent per-id session via -A.
+local function warm_cmd(opts, dir)
+  return "env -u TMUX tmux new-session -A -s nvim-" .. opts.id .. " -c " .. vim.fn.shellescape(dir)
+end
 
 for _, t in ipairs(warm_terms) do
   local lhs, modes, fn, opts, label = t[1], t[2], t[3], t[4], t[5]
   map(modes, lhs, function()
     local dir = warm_cwd()
-    -- Pass the target dir both as the job cwd and as $NVIM_WARM_CD. The env var
-    -- is the source of truth: it survives `env -u NVIM -u TMUX` and the tmux
-    -- plugin cd's the warm session to it (the warm session is born in the
-    -- daemon's /tmp and $(pwd) of this shell is unreliable). See doc/tmux.md.
     require("nvchad.term")[fn](vim.tbl_extend("force", opts, {
-      cmd = warm_shell,
-      termopen_opts = { cwd = dir, env = { NVIM_WARM_CD = dir } },
+      cmd = warm_cmd(opts, dir),
+      termopen_opts = { cwd = dir },
     }))
   end, { desc = "terminal " .. label .. " (warm tmux)" })
 end

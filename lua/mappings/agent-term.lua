@@ -90,14 +90,14 @@ local function open_or_focus_agent_term()
   -- running), create the session on the fly and attach -- <C-l> ALWAYS opens tmux,
   -- it never falls back to the bare CLI tool.
   local function try_open(attempt)
-    vim.fn.system("tmux has-session -t " .. session .. " 2>/dev/null")
+    vim.fn.system("env -u TMUX tmux has-session -t " .. session .. " 2>/dev/null")
     if vim.v.shell_error == 0 then
       attach()
     elseif attempt > 0 then
       vim.defer_fn(function() try_open(attempt - 1) end, 150)
     else
       local tool = get_agent_cli_tool()
-      vim.fn.system("tmux new-session -d -s " .. session .. " " .. vim.fn.shellescape(tool) .. " 2>/dev/null")
+      vim.fn.system("env -u TMUX tmux new-session -d -s " .. session .. " " .. vim.fn.shellescape(tool) .. " 2>/dev/null")
       attach()
     end
   end

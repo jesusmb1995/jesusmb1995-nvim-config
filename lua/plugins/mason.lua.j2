@@ -1,10 +1,19 @@
-{% set ns = namespace(prefetch=false) -%}
+-- Mason is OFF by default. NvChad's bundled spec
+-- (lazy/NvChad/lua/nvchad/plugins/init.lua) enables mason-org/mason.nvim, so
+-- returning {} here does NOT disable it -- NvChad's spec wins and :Mason loads.
+-- Instead we override that spec with enabled = false: lazy never loads mason,
+-- and the prefetch (generate_nvim.lua) drops it from the clone set and prunes
+-- any stale lazy/mason.nvim. LSP servers are enabled via vim.lsp.config /
+-- vim.lsp.enable (configs/lspconfig.lua.j2) and installed via apt, and the
+-- prefetch installs NO mason packages, so mason has nothing to manage. Opt in
+-- per config with the nvim repo feature `mason: "true"`.
+{% set ns = namespace(enable=false) -%}
 {% for repo in repositories -%}
-{% if repo.id == "nvim" and repo.features and "prefetch_plugins" in repo.features -%}
-{% set ns.prefetch = true -%}
+{% if repo.id == "nvim" and repo.features and repo.features.mason == "true" -%}
+{% set ns.enable = true -%}
 {% endif -%}
 {% endfor -%}
-{% if ns.prefetch %}
+{% if ns.enable %}
 return {
   "mason-org/mason.nvim",
   opts = {
@@ -23,5 +32,5 @@ return {
   end,
 }
 {% else %}
-return {}
+return { "mason-org/mason.nvim", enabled = false }
 {% endif %}
