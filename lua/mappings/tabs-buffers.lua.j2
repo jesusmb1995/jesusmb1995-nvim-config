@@ -1,6 +1,6 @@
 local map = vim.keymap.set
 
-map("n", "<leader>X", ":tabclose | bdelete<CR>", { desc = "Close current tab and its buffers" })
+map("n", "<leader>X", ":tabclose<CR>", { desc = "Close current tab (keeps buffers)" })
 
 map("n", "<leader>B", ":tabnew %<CR>", { desc = "Open current buffer window in new tab" })
 map("n", "<leader>T", ":tabnew<CR>", { desc = "Open new tab" })
