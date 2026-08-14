@@ -1,5 +1,43 @@
 local map = vim.keymap.set
 
+-- Per-tab explorer on <C-n> (replaces NvChad's global NvimTreeToggle):
+-- nvim-tree keeps ONE tree buffer per process, so "per tab" means the tree
+-- window lives in the tab you toggle from and its root follows that tab's
+-- cwd (:tcd-aware). Toggling closes it only when it is displayed in THIS
+-- tab; when it sits in another tab it is moved here instead of closed there.
+map({ "n" }, "<C-n>", function()
+  local ok, api = pcall(require, "nvim-tree.api")
+  if not ok then
+    vim.notify("nvim-tree API not available", vim.log.levels.WARN)
+    return
+  end
+
+  local tree_in_this_tab = false
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    local buf = vim.api.nvim_win_get_buf(win)
+    if vim.bo[buf].filetype == "NvimTree" then
+      tree_in_this_tab = true
+      break
+    end
+  end
+
+  if tree_in_this_tab then
+    api.tree.close()
+    return
+  end
+
+  -- single tree buffer: release it from any other tab before opening here
+  if api.tree.is_visible() then
+    api.tree.close()
+  end
+
+  local dir = vim.fn.getcwd(-1, 0) -- tab-local cwd, empty when unset
+  if dir == "" or dir == nil then
+    dir = vim.fn.getcwd()
+  end
+  api.tree.open({ path = dir })
+end, { desc = "NvimTree toggle (per tab, tab cwd)" })
+
 map({ "n" }, "<leader>tm", function()
   local ok, api = pcall(require, "nvim-tree.api")
   if not ok then
