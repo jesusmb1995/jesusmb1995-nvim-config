@@ -1,10 +1,11 @@
 local map = vim.keymap.set
 
--- Per-tab explorer on <C-n> (replaces NvChad's global NvimTreeToggle):
--- nvim-tree keeps ONE tree buffer per process, so "per tab" means the tree
--- window lives in the tab you toggle from and its root follows that tab's
--- cwd (:tcd-aware). Toggling closes it only when it is displayed in THIS
--- tab; when it sits in another tab it is moved here instead of closed there.
+-- Workspace explorer on <C-n> (replaces NvChad's global NvimTreeToggle):
+-- nvim-tree keeps ONE tree buffer per process, so the tree is keyed by ROOT,
+-- not tab: it opens rooted at the toggling tab's effective cwd (:tcd-aware,
+-- global cwd fallback). Tabs at the same pwd share that tree (the window
+-- simply moves to the toggling tab); tabs at different pwds re-root it to
+-- their own cwd. Toggling closes it only when displayed in THIS tab.
 map({ "n" }, "<C-n>", function()
   local ok, api = pcall(require, "nvim-tree.api")
   if not ok then
