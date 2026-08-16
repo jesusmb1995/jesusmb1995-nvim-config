@@ -1,4 +1,5 @@
 local map = vim.keymap.set
+local M = {}
 
 local function find_agent_term()
   for _, opts in pairs(vim.g.nvchad_terms or {}) do
@@ -116,6 +117,11 @@ local function send_to_agent(text)
     end
   end)
 end
+
+-- Exported for mappings/terminal.lua: the warm-terminal <C-l> hint mappings
+-- type their tmux lookup recipe into the agent CLI through this same channel
+-- as the file-reference mappings below.
+M.send_to_agent = send_to_agent
 
 map("n", "<leader><C-l>", open_or_focus_agent_term, { desc = "Open/focus agent terminal" })
 
@@ -245,3 +251,5 @@ map("t", "<C-n>", function()
     vim.fn.chansend(chan, "/clear")
   end
 end, { desc = "Clear agent conversation (new chat)" })
+
+return M
