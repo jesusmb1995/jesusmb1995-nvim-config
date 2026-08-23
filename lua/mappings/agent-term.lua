@@ -1,9 +1,38 @@
 local map = vim.keymap.set
 local M = {}
 
+-- Agent-terminal identity is the PROJECT (cwd), never the tab or nvim
+-- instance:
+--   * tmux session  agent@<md5-8 cwd>   — the warm daemon's prewarmed
+--     workspace session. Every <leader><C-l> in that project (any tab, any
+--     nvim) warm-attaches the SAME session: shared conversation per project.
+--     Different projects hash differently, so they can never share.
+--   * nvchad term id  agentTerm-<dir key> — per-project terminal BUFFER.
+--     With multiple nvim tabs at different :tcd projects, each tab gets its
+--     own buffer (the old global "agentTerm" id made tab 2 focus tab 1's
+--     buffer — the "re-uses same for all" bug).
+local function agent_cwd()
+  return vim.fn.getcwd() -- :tcd/:lcd-aware
+end
+
+local function dir_key(dir)
+  return (dir:gsub("[^%w%-]", "_"))
+end
+
+local function agent_term_id()
+  return "agentTerm-" .. dir_key(agent_cwd())
+end
+
+local function agent_session_name(cwd)
+  local root = vim.fn.shellescape(cwd)
+  local hash = vim.fn.system("printf '%s' " .. root .. " | md5sum | cut -c1-8"):gsub("%s+", "")
+  return "agent@" .. hash
+end
+
 local function find_agent_term()
+  local id = agent_term_id()
   for _, opts in pairs(vim.g.nvchad_terms or {}) do
-    if opts and opts.id == "agentTerm" then
+    if opts and opts.id == id then
       return opts
     end
   end
@@ -11,16 +40,34 @@ local function find_agent_term()
 end
 
 local function in_agent_term()
-  local term = find_agent_term()
-  return term ~= nil and term.buf == vim.api.nvim_get_current_buf()
+  local buf = vim.api.nvim_get_current_buf()
+  for _, opts in pairs(vim.g.nvchad_terms or {}) do
+    if opts and opts.buf == buf and opts.id and opts.id:match "^agentTerm" then
+      return true
+    end
+  end
+  return false
 end
 
 local function ensure_is_agent_marker()
-  local marker = vim.fn.getcwd() .. "/.was_agent"
+  local cwd = vim.fn.getcwd()
+  -- Register via was-agent (sqlite registry + legacy json dual-write) when
+  -- deployed; otherwise fall back to the per-dir .was_agent marker file.
+  local was_agent = vim.fn.exepath("was-agent")
+  if was_agent == "" then
+    local fallback = vim.fn.expand("~/.local/bin/was-agent")
+    if vim.fn.executable(fallback) == 1 then
+      was_agent = fallback
+    end
+  end
+  if was_agent ~= "" then
+    vim.fn.system({ was_agent, "mark", cwd })
+    return
+  end
+  local marker = cwd .. "/.was_agent"
   if vim.fn.filereadable(marker) == 0 then
     local f = io.open(marker, "w")
     if f then f:close() end
-    _G.register_warm_workspace()
   end
 end
 
@@ -63,8 +110,14 @@ local function get_agent_cli_tool()
   return tool
 end
 
+-- Test hooks for headless/e2e suites: naming runs on whatever nvim binary
+-- executes the suite (host OR container).
+M._agent_session_name = agent_session_name
+M._agent_term_id = agent_term_id
+
 local function open_or_focus_agent_term()
   ensure_is_agent_marker()
+  local id = agent_term_id()
   local term = find_agent_term()
   if term and vim.api.nvim_buf_is_valid(term.buf) then
     local win_id = vim.fn.bufwinid(term.buf)
@@ -72,24 +125,22 @@ local function open_or_focus_agent_term()
       vim.api.nvim_set_current_win(win_id)
       vim.cmd "startinsert"
     else
-      require("nvchad.term").toggle { pos = "vsp", id = "agentTerm" }
+      require("nvchad.term").toggle { pos = "vsp", id = id }
     end
     return
   end
 
-  local root = vim.fn.shellescape(vim.fn.getcwd())
-  local hash = vim.fn.system("printf '%s' " .. root .. " | md5sum | cut -c1-8"):gsub("%s+", "")
-  local session = "agent@" .. hash
+  -- Session identity = project. Attach the warm daemon's prewarmed
+  -- agent@<hash> when present (poll briefly — the daemon may be spinning it
+  -- up after VimEnter marked this workspace); otherwise create it once with
+  -- the selected agent CLI. Every tab/nvim in the SAME project warm-attaches
+  -- this same session; different projects never collide (different hash).
+  local session = agent_session_name(agent_cwd())
 
   local function attach()
-    require("nvchad.term").toggle { pos = "vsp", cmd = "env -u TMUX tmux attach -t " .. session, id = "agentTerm" }
+    require("nvchad.term").toggle { pos = "vsp", cmd = "env -u TMUX tmux attach -t " .. session, id = id }
   end
 
-  -- The warm daemon may still be spinning up the agent@ session (started lazily
-  -- by the shell / by nvim on VimEnter). Poll briefly so the FIRST <C-l> attaches
-  -- to the pre-warmed tmux session. If it still isn't there (daemon slow or not
-  -- running), create the session on the fly and attach -- <C-l> ALWAYS opens tmux,
-  -- it never falls back to the bare CLI tool.
   local function try_open(attempt)
     vim.fn.system("env -u TMUX tmux has-session -t " .. session .. " 2>/dev/null")
     if vim.v.shell_error == 0 then
@@ -98,7 +149,9 @@ local function open_or_focus_agent_term()
       vim.defer_fn(function() try_open(attempt - 1) end, 150)
     else
       local tool = get_agent_cli_tool()
-      vim.fn.system("env -u TMUX tmux new-session -d -s " .. session .. " " .. vim.fn.shellescape(tool) .. " 2>/dev/null")
+      vim.fn.system(
+        "env -u TMUX tmux new-session -d -s " .. session .. " " .. vim.fn.shellescape(tool) .. " 2>/dev/null"
+      )
       attach()
     end
   end
@@ -130,7 +183,7 @@ map("n", "<leader><C-l>", open_or_focus_agent_term, { desc = "Open/focus agent t
 
 map("t", "<C-l>", function()
   if in_agent_term() then
-    require("nvchad.term").toggle { pos = "vsp", cmd = get_agent_cli_tool(), id = "agentTerm" }
+    require("nvchad.term").toggle { pos = "vsp", cmd = get_agent_cli_tool(), id = agent_term_id() }
   end
 end, { desc = "Close agent terminal from inside" })
 
