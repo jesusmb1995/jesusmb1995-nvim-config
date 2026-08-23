@@ -12,6 +12,7 @@
 -- getcwd is / or empty we fall back to the current file's git root / directory.
 -- See doc/tmux.md.
 local map = vim.keymap.set
+local M = {}
 
 -- Required after mappings.agent-term (see init.lua order): exposes
 -- send_to_agent used by the warm-terminal <C-l> hint mappings below.
@@ -414,3 +415,48 @@ vim.api.nvim_create_autocmd("BufWinEnter", {
     end
   end,
 })
+
+-- Shared "run command in the warm horizontal terminal" entry point.
+-- The <C-g>/horizontal-toggle panel is a WARM INNER TMUX session
+-- (nvim-htoggleTerm-<dirkey>, Ctrl+B-controlled), not a plain terminal.
+-- bazel-launcher (<leader><A-G>), cmd bookmarks (LaunchHoriz) and the
+-- shell/ctest runner all type their command into THAT same tmux session so
+-- everything shares one bottom panel.
+M.run_in_horizontal_warm = function(cmd)
+  local dir = warm_cwd()
+  local id = "htoggleTerm-" .. dir_key(dir)
+  local session = "nvim-" .. id
+
+  -- Ensure the panel exists and is visible (same path as the toggle keys).
+  local entry
+  for _, v in pairs(vim.g.nvchad_terms or {}) do
+    if v and v.id == id then
+      entry = v
+    end
+  end
+  local visible = entry and vim.api.nvim_buf_is_valid(entry.buf) and vim.fn.bufwinid(entry.buf) ~= -1
+  if not visible then
+    require("nvchad.term").toggle {
+      pos = "sp",
+      id = id,
+      cmd = warm_cmd({ pos = "sp", id = id }, dir),
+      termopen_opts = { cwd = dir },
+    }
+  end
+
+  -- Wait briefly for the warm session client to come up (first creation).
+  vim.wait(1500, function()
+    vim.fn.system("env -u TMUX tmux has-session -t " .. vim.fn.shellescape(session) .. " 2>/dev/null")
+    return vim.v.shell_error == 0
+  end, 100)
+
+  -- Type the command into the session's shell: clear the line, type
+  -- literally, Enter. Interactive output (bazel run, long jobs) behaves
+  -- exactly like typing it there by hand.
+  local esc = vim.fn.shellescape(session)
+  vim.fn.system("env -u TMUX tmux send-keys -t " .. esc .. " C-u 2>/dev/null")
+  vim.fn.system("env -u TMUX tmux send-keys -t " .. esc .. " -l " .. vim.fn.shellescape(cmd) .. " 2>/dev/null")
+  vim.fn.system("env -u TMUX tmux send-keys -t " .. esc .. " Enter 2>/dev/null")
+end
+
+return M
