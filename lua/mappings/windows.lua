@@ -1,22 +1,54 @@
+local M = {}
+
 local map = vim.keymap.set
 
 -- Resize panel width with Ctrl+Alt+Shift+Arrows
 map("n", "<C-A-S-Right>", ":vertical resize +5<CR>", { desc = "Increase window width", silent = true })
 map("n", "<C-A-S-Left>", ":vertical resize -5<CR>", { desc = "Decrease window width", silent = true })
 
-local function equalize_with_neighbor(direction)
+-- Set the current window's size to `fraction` of the combined size of the
+-- current window and one neighbor along `axis` ("width": left/right windows,
+-- "height": up/down windows). Neighbor discovery: an explicit `direction`
+-- ("left"/"right" or "up"/"down") uses only that side; otherwise prefer
+-- left/up and fall back to right/down. No neighbor at all: no-op.
+local function set_fraction_with_neighbor(axis, fraction, direction)
   local cur_win = vim.api.nvim_get_current_win()
-  local cur_width = vim.api.nvim_win_get_width(cur_win)
-  vim.cmd(direction == "left" and "wincmd h" or "wincmd l")
-  local neighbor_win = vim.api.nvim_get_current_win()
-  if neighbor_win == cur_win then return end
-  local neighbor_width = vim.api.nvim_win_get_width(neighbor_win)
+  local is_width = axis == "width"
+  local get_size = is_width and vim.api.nvim_win_get_width or vim.api.nvim_win_get_height
+  local set_size = is_width and vim.api.nvim_win_set_width or vim.api.nvim_win_set_height
+  local back_cmd, forth_cmd = "wincmd h", "wincmd l"
+  if not is_width then
+    back_cmd, forth_cmd = "wincmd k", "wincmd j"
+  end
+  if direction == "right" or direction == "down" then
+    back_cmd, forth_cmd = forth_cmd, nil
+  elseif direction == "left" or direction == "up" then
+    forth_cmd = nil
+  end
+
+  local function win_after(cmd)
+    vim.cmd(cmd)
+    local win = vim.api.nvim_get_current_win()
+    if win == cur_win then return nil end
+    return win
+  end
+
+  local neighbor_win = win_after(back_cmd) or (forth_cmd and win_after(forth_cmd) or nil)
+  if not neighbor_win then return end
+
+  local combined = get_size(cur_win) + get_size(neighbor_win)
   vim.api.nvim_set_current_win(cur_win)
-  vim.api.nvim_win_set_width(cur_win, math.floor((cur_width + neighbor_width) / 2))
+  set_size(cur_win, math.max(1, math.floor(combined * fraction)))
 end
 
-map("n", "<leader>we", function() equalize_with_neighbor("left") end, { desc = "Equalize width with left window", silent = true })
-map("n", "<leader>wE", function() equalize_with_neighbor("right") end, { desc = "Equalize width with right window", silent = true })
+map("n", "<leader>we", function() set_fraction_with_neighbor("width", 0.5, "left") end, { desc = "Equalize width with left window", silent = true })
+map("n", "<leader>wE", function() set_fraction_with_neighbor("width", 0.5, "right") end, { desc = "Equalize width with right window", silent = true })
+
+map("n", "<leader>wq", function() set_fraction_with_neighbor("width", 0.25) end, { desc = "Set current window width to quarter of split", silent = true })
+map("n", "<leader>wa", function() set_fraction_with_neighbor("height", 0.25) end, { desc = "Set current window height to quarter of split", silent = true })
+map("n", "<leader>wd", function() set_fraction_with_neighbor("height", 0.5) end, { desc = "Set current window height to half of split", silent = true })
+
+M._set_fraction_with_neighbor = set_fraction_with_neighbor
 
 map("n", "<leader>np", ":NoNeckPain<CR>", { noremap = true, silent = true, desc = "No neck pain toggle" })
 
@@ -121,3 +153,5 @@ else
     end,
   })
 end
+
+return M
