@@ -255,9 +255,20 @@ local function exec_shell_or_ctest(pos, term_id)
   end
 end
 
+{#- tmux-wm preset: the OUTER tmux binds M-H/M-h/M-v as pane keys (swap /
+    focus / split), so <Alt>+H/h/v never reach nvim. <leader><A-Y> is the
+    cmd-bookmark run (LaunchHoriz, see savecmd spec); the shell/ctest
+    horizontal runner lives on <leader><A-C> (C for CTest). Other presets
+    keep <Alt>+H. -#}
+{%- if features.mode | default('i3') == 'tmux' %}
+map("n", "<leader><A-C>", function()
+  exec_shell_or_ctest("sp", "htoggleTerm")
+end, { desc = "Execute shell script or CTest picker — horizontal" })
+{%- else %}
 map("n", "<leader><A-H>", function()
   exec_shell_or_ctest("sp", "htoggleTerm")
 end, { desc = "Execute shell script or CTest picker — horizontal" })
+{%- endif %}
 
 map("n", "<leader><A-V>", function()
   ctest_gtest_picker("vsp", "vtoggleTerm")
