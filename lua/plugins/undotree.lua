@@ -7,6 +7,9 @@ return {
     "UndotreeHide",
     "UndotreeFocus",
   },
+  keys = {
+    { "<leader>u", "<cmd>UndotreeToggle<cr>", desc = "Toggle undotree" },
+  },
   init = function()
     local undodir = vim.fn.stdpath("state") .. "/undo"
     local max_undo_files = 1200
