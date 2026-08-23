@@ -1,0 +1,44 @@
+{%- set ns = namespace(local_deploy=false) -%}
+{% for repo in repositories -%}
+{% if repo.id == "cmd_bookmarks" and repo.enabled -%}
+{% set ns.local_deploy = true -%}
+{% endif -%}
+{% endfor -%}
+{% if ns.local_deploy %}
+-- cmd_bookmarks is deployed locally by its install hook to
+-- ~/.local/share/cmd_bookmarks: the same central store zsh's savecmd.zsh uses.
+return {
+  {
+    dir = vim.fn.expand "~/.local/share/cmd_bookmarks",
+    lazy = true,
+    cmd = { "LaunchVert", "LaunchHoriz", "LaunchFloat" },
+    keys = {
+      { "<leader><A-v>", "<cmd>LaunchVert<cr>",  desc = "Launch command in vertical terminal" },
+      { "<leader><A-h>", "<cmd>LaunchHoriz<cr>", desc = "Launch command in horizontal terminal" },
+      { "<leader><A-i>", "<cmd>LaunchFloat<cr>", desc = "Launch command in floating window" },
+      { "<leader>rr",    "<cmd>LaunchLast<cr>",  desc = "Launch last run command" },
+    },
+    config = function()
+      require('savecmd-nvim').setup()
+    end
+  }
+}
+{% else %}
+return {
+  {
+    url = "https://github.com/jesusmb1995/cmd_bookmarks",
+    -- dir = "/luksmap/Code/savecmd",
+    lazy = true,
+    cmd = { "LaunchVert", "LaunchHoriz", "LaunchFloat" },
+    keys = {
+      { "<leader><A-v>", "<cmd>LaunchVert<cr>",  desc = "Launch command in vertical terminal" },
+      { "<leader><A-h>", "<cmd>LaunchHoriz<cr>", desc = "Launch command in horizontal terminal" },
+      { "<leader><A-i>", "<cmd>LaunchFloat<cr>", desc = "Launch command in floating window" },
+      { "<leader>rr",    "<cmd>LaunchLast<cr>",  desc = "Launch last run command" },
+    },
+    config = function()
+      require('savecmd-nvim').setup()
+    end
+  }
+}
+{% endif %}
