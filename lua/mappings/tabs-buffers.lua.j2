@@ -24,5 +24,58 @@ if quicktabs then
     map("n", "<A-" .. i .. ">", i .. "gt", { desc = "Go to tab " .. i })
   end
   map("n", "<A-g>", ":tabnew<CR>:Dashboard<CR>", { desc = "New tab + Dashboard" })
+
+  -- Per-tab project cwd. Opening a project (dashboard, :cd, session restore)
+  -- sets the GLOBAL cwd: without this, jumping tabs leaves every tab on the
+  -- LATEST opened project (statusline, terminals, agent@sessions all follow
+  -- it). Record cwd changes (:cd/:tcd/:lcd — DirChanged) onto the tab they
+  -- happen in, and restore that tab's own project when entering it.
+  local tab_cwds = {}
+
+  local function record_cwd()
+    local ok, t = pcall(vim.api.nvim_get_current_tabpage)
+    if ok and t then
+      tab_cwds[t] = vim.fn.getcwd()
+    end
+  end
+
+  vim.api.nvim_create_autocmd("DirChanged", {
+    pattern = { "global", "tab", "window" },
+    callback = function()
+      local t = vim.api.nvim_get_current_tabpage()
+      local ev_cwd = vim.v.event.cwd
+      -- Defer the record: entering/leaving a tcd'd tab fires DirChanged
+      -- BEFORE TabEnter's restore (a switch side effect whose cwd equals the
+      -- GLOBAL dir, not the entered tab's project). One schedule later a
+      -- real :cd still matches; a side effect got overridden by the restore
+      -- and no longer matches -> skipped.
+      vim.schedule(function()
+        if vim.api.nvim_get_current_tabpage() ~= t then return end
+        if vim.fn.getcwd() ~= ev_cwd then return end
+        tab_cwds[t] = ev_cwd
+      end)
+    end,
+  })
+  -- Initialize on enter (startup tab / tabs created before any change) so the
+  -- launch project is captured without an explicit :cd.
+  vim.api.nvim_create_autocmd("TabEnter", {
+    callback = function()
+      local t = vim.api.nvim_get_current_tabpage()
+      if tab_cwds[t] == nil then
+        record_cwd()
+        return
+      end
+      local want = tab_cwds[t]
+      if vim.fn.getcwd() ~= want then
+        vim.cmd("tcd " .. vim.fn.fnameescape(want))
+      end
+    end,
+  })
+  vim.api.nvim_create_autocmd("TabClosed", {
+    callback = function(args)
+      tab_cwds[tonumber(args.file)] = nil
+    end,
+  })
+  record_cwd()
 end
 {% endif %}
