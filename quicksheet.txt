@@ -11,6 +11,9 @@ tmux split vertical | <C-b>%
 tmux jump split | <C-b>o
 tmux close splitted | <C-b>&
 rerun last command | r<enter>
+## Bazel launcher
+reload changes (new targets, etc.) | <C-r>
+build target (rather than run) | <C-d>
 ## Debugging
 coredumpctl list | list available core dumps
 coredumpctl debug <PID> | attach to specific core dump

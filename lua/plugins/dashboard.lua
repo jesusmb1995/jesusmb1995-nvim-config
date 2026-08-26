@@ -243,6 +243,12 @@ return {
       return path:sub(1, keep_left) .. '...' .. path:sub(-keep_right)
     end
 
+    -- Shortcut keys ([l] Lazy, [q] Quit, [p] Jump Projects) are reserved.
+    -- Populated below where the shortcuts table is defined; entry-letter
+    -- maps must never use these keys or they silently override the
+    -- buffer-local shortcut maps bound while the dashboard renders.
+    local reserved_shortcut_keys = {}
+
     local function restyle_dashboard_entries(bufnr)
       local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
       local extmarks = {}
@@ -307,10 +313,19 @@ return {
         local target = row_targets[row]
         if target and type(virt) == 'table' and type(virt[1]) == 'table' then
           local key = tostring(virt[1][1] or '')
-          if key:match('^%S+$') then
+          -- Shadowing guard: restyle must never rebind a multi-char token
+          -- or a reserved shortcut key ([l]/[q]/[p]) — dashboard-nvim binds
+          -- those on the same buffer, and a later keymap.set for the same
+          -- key would silently kill the shortcut.
+          if key:match('^%S+$') and #key == 1 and not reserved_shortcut_keys[key] then
             vim.keymap.set('n', key, function()
               open_target(target)
-            end, { buffer = bufnr, silent = true, nowait = true })
+            end, {
+              buffer = bufnr,
+              silent = true,
+              nowait = true,
+              desc = 'dashboard custom entry open',
+            })
           end
         end
       end
@@ -383,6 +398,41 @@ return {
       },
     }
 
+    -- Mark the shortcut keys as reserved for restyle_dashboard_entries and
+    -- for the entry-letter pool (letter_list below omits them too).
+    for _, item in ipairs(shortcuts) do
+      reserved_shortcut_keys[item.key] = true
+    end
+
+    -- dashboard-nvim persists its config when the last dashboard buffer
+    -- closes (cache_opts): function shortcut actions are string.dump-ed to
+    -- the cache, and the next :Dashboard in the same instance restores them
+    -- from bytecode (get_opts). Restored closures lose their upvalues, so
+    -- the [p] Jump Projects action dies with "attempt to call a nil value
+    -- (upvalue ...)". Snapshot the live actions here and re-bind them on
+    -- every render so the shortcuts survive the cache round-trip.
+    local shortcut_actions = {}
+    for _, item in ipairs(shortcuts) do
+      shortcut_actions[item.key] = item.action
+    end
+
+    local function rebind_shortcut_keys(bufnr)
+      for key, action in pairs(shortcut_actions) do
+        vim.keymap.set('n', key, function()
+          if type(action) == 'function' then
+            action()
+          else
+            vim.cmd(action)
+          end
+        end, {
+          buffer = bufnr,
+          silent = true,
+          nowait = true,
+          desc = 'dashboard-shortcut-' .. key,
+        })
+      end
+    end
+
     local fire_headers = {
       {
         '',
@@ -404,7 +454,10 @@ return {
       theme = 'hyper',
       shortcut_type = 'letter',
       shuffle_letter = false,
-      letter_list = 'asdfqwertyuiopzxcvbnmghjkl',
+      -- 'l', 'q' and 'p' removed: they belong to the shortcuts above, and
+      -- keeping them out of the entry-letter pool guarantees entry rows can
+      -- never shadow the [l]/[q]/[p] maps.
+      letter_list = 'asdfqwertyuiozxcvbnmghjk',
       config = {
         shortcuts_left_side = true,
         header = fire_headers[math.random(#fire_headers)],
@@ -439,6 +492,11 @@ return {
       callback = function(args)
         vim.schedule(function()
           if vim.api.nvim_buf_is_valid(args.buf) then
+            -- Re-bind the shortcut keys with the live actions first: on a
+            -- re-opened :Dashboard the plugin has restored the shortcut
+            -- actions from string.dump bytecode with nil upvalues, so its
+            -- own [p] binding is broken until we override it here.
+            rebind_shortcut_keys(args.buf)
             restyle_dashboard_entries(args.buf)
           end
         end)
