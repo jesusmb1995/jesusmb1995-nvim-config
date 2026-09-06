@@ -38,11 +38,9 @@ local function norm_dir(p)
   return (vim.fn.fnamemodify(p, ":p"):gsub("/$", ""))
 end
 
--- `jj workspace list` scoped to the current tab: entries carry name, path
--- (first token after "name:" — the rest is change/desc junk), a name-first
--- label, and a `current` flag for the workspace matching the tab cwd.
--- Status lines without "name:" are skipped. The list itself is already scoped
--- to the current repo (jj), so other repos' workspaces never show up.
+-- `jj workspace list` scoped to the current tab: only show workspaces whose
+-- path/name relates to the current buffer's directory, so users don't see every
+-- workspace in the repo. Status lines without "name:" are skipped.
 local function jj_workspace_list_scoped(root)
   local tab_cwd = vim.fn.getcwd()
   local jj_root = root or gw_jj_root()
@@ -54,6 +52,8 @@ local function jj_workspace_list_scoped(root)
   if not ok then return {}, jj_root end
   local list = {}
   local cur_norm = norm_dir(tab_cwd)
+  local scope_name = vim.fn.fnamemodify(tab_cwd, ":t")
+  if scope_name == "" or scope_name == "." then scope_name = nil end
   for _, line in ipairs(vim.split(vim.trim(out), "\n")) do
     line = vim.trim(line)
     if line ~= "" then
@@ -63,12 +63,19 @@ local function jj_workspace_list_scoped(root)
         if p then
           local abs = p:sub(1, 1) == "/" and p or (jj_root .. "/" .. p)
           local is_cur = norm_dir(abs) == cur_norm
-          table.insert(list, {
-            name = name,
-            path = p,
-            current = is_cur,
-            label = (is_cur and "* " or "  ") .. name .. " → " .. p,
-          })
+          local ws_name = vim.fn.fnamemodify(abs, ":t")
+          local in_scope = is_cur or name == "default"
+          if scope_name and not in_scope then
+            in_scope = ws_name == scope_name or ws_name:find("-" .. scope_name, 1, true) ~= nil
+          end
+          if in_scope then
+            table.insert(list, {
+              name = name,
+              path = p,
+              current = is_cur,
+              label = (is_cur and "* " or "  ") .. name .. " → " .. p,
+            })
+          end
         end
       end
     end

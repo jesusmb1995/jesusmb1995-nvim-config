@@ -761,16 +761,16 @@ map("n", "<leader>GD", function()
   _with_jj_repo(function()
     require("lazy").load({ plugins = { "jj.nvim" } })
     local runner = require("jj.core.runner")
-    local out = runner.execute_command("jj op log --no-graph -T 'id.short(8) ++ \"\\t\" ++ description.first_line() ++ \"\\n\"' 2>/dev/null", nil, nil, true) or ""
-    -- fallback to newer template: op log -T 'id ++ " " ++ description'
+    local out = runner.execute_command("jj op log --no-graph -T 'id.short(8) ++ \"\\t\" ++ time ++ \"\\t\" ++ description.first_line() ++ \"\\n\"' 2>/dev/null", nil, nil, true) or ""
+    -- fallback to plain op log (no time column)
     if vim.trim(out) == "" then out = runner.execute_command("jj op log 2>&1 | head -n 50", nil, nil, true) or "" end
     local ops = {}
     for _, line in ipairs(vim.split(out, "\n")) do
       line = vim.trim(line)
       if line ~= "" then
-        local id, desc = line:match("^([^\t]+)\t([^\t]*)")
+        local id, time, desc = line:match("^([^\t]+)\t([^\t]+)\t([^\t]*)")
         if not id then id = line:match("^(%S+)"); desc = line:sub(#id+1) end
-        table.insert(ops, { id = id, label = id .. " " .. (desc or "") })
+        table.insert(ops, { id = id, label = id .. "  " .. (time or "") .. "  " .. (desc or "") })
       end
     end
     if #ops == 0 then vim.notify("No operations", vim.log.levels.WARN) return end
