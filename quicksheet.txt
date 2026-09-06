@@ -14,6 +14,9 @@ rerun last command | r<enter>
 ## Bazel launcher
 reload changes (new targets, etc.) | <C-r>
 build target (rather than run) | <C-d>
+test target (forced bazel test) | <C-t>
+run target (forced bazel run, overrides _test heuristic) | <C-g>
+auto test when target contains _test (plain Enter) | <CR> heuristic
 ## Debugging
 coredumpctl list | list available core dumps
 coredumpctl debug <PID> | attach to specific core dump
@@ -38,6 +41,7 @@ Write all changed buffers | :wa
 Delete all.within.same.block | dW
 Insert into next group (e.g. () {} []) | ci<group>
 Buffer undo history | :UndoTreeToggle
+### Bookmarks
 standalone vim temporary bookmark set | m<letter>
 jump to vim bookmark | '<letter>
 jump to vim bookrmak (with telescpe) | <leader>ma
@@ -45,7 +49,9 @@ add/remove bookmark at current line | mm
 jump to next bookmark in buffer | mn
 jump to previous bookmark in buffer | mp
 show all bookmarks (toggle) | ma
-clear bookmarks in all buffers | :BookmarkClearAll
+per-workspace permanent (sqlite) toggle+save | mM
+per-workspace permanent show all | mA
+bookmark icon in gutter () + highlight | vim-bookmarks signs
 ## Nv-chad
 Open floating terminal | <A-i>
 Collapse all (Tree, symbols, etc.) | W
@@ -60,6 +66,8 @@ Open current buffer window in new tab | <leader>B"
 Open new tab" | <leader>T"
 Next file in terminal | ]f
 Pref file in terminal | [f
+Tabs: Alt+1..9 or Alt+Shift+1..9 (both work, tmux-wm safe) | <A-1> or <A-S-1>
+Horizontal term <C-g> disabled inside agent term (unless only window) | <C-g> guard
 ## Nvim-directory-tree
 CD into folder | <C-]>
 Expand directory | <C-E>
@@ -147,15 +155,46 @@ Stash staged changes (unstaged remains) | git stash --staged
 Stage all conflicts as resolved | git status --short | grep '^UU' | awk '{print $1}' | xargs git add
 Empty current patch but keep changes locally (spill) | <leader>gku
 Create new patch with staged changes after current (return) | <leader>gkN
-Select and cd to git worktree | <leader>gwg
-Create worktree for branch and cd to it | <leader>gwc
-Remove all clean git worktrees | <leader>gwx
-Workspace from git PR | <leader>gwp", function()
+### git/jj worktrees
+Select worktree and open in new tab (JJ workspace when jj) | <leader>gwg
+Create worktree for branch and open in new tab (JJ workspace when jj) | <leader>gwc
+Create worktree and open in new tab (JJ workspace when jj) | <leader>gwC
+Select worktree and open in new tab (JJ workspace when jj) | <leader>gwG
+Create worktree and open in new nvim instance (JJ workspace when jj) | <leader>gwK
+Select worktree and open in new nvim instance (JJ workspace when jj) | <leader>gwH
+Remove all clean git worktrees (JJ forget when jj) | <leader>gwx
+Workspace from git PR (JJ bookmark workspace when jj) | <leader>gwp
 ## jj
 jj git init | initiaze repo
 git tag | add tag
 q | quit jujutsu window
 interactive regase | gl + r (on line or multiple visual ones ones)
+jj squash (floating, :w works) | <leader>grs
+move current file diff (@) into selected patch | <leader>gF (dropdown picks destination)
+jj duplicate stack → pair X1 (orig) + X2..N (dup, increasing) | <leader>gkc
+jj workspace list/select (jj when jj repo, else git) | <leader>gwg
+jj workspace add (prompt name + path) | <leader>gwa
+jj workspace forget | <leader>gwd
+jj diff FROM..TO (pick both, diffview tab) | <leader>Gd
+jj op diff --from-op (grouped, diffview tab) | <leader>GD
+## jj log panel (<leader>gl) — hover line + press:
+edit commit (enter) | <CR>
+edit immutable | <S-CR>
+describe | d
+diff | <S-d>
+new commit | n
+new after | <C-n>
+abandon | a
+rebase onto/after/before | r then o/a/b (or S-o/S-a/S-b for immutable) + Esc to exit mode
+squash into | s then <CR> (or S-CR)
+duplicate onto/after/before | <C-y> then o/a/b
+summary tooltip | <S-k> (then S-d diff, CR edit)
+split | <C-s>
+resolve | gr
+next/prev revision | gj / gk
+change revset | <C-r>
+history | <S-h>
+close log | q / <Esc>
 ## Aliases (.aliases)
 Stage all conflicts as resolved (alias) | git-resolve 
 Stage all conflicts as resolved and refresh (alias) | stg-resolve 

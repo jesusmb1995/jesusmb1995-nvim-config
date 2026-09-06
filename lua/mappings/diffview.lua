@@ -9,6 +9,16 @@ local function git_root_for_buffer()
   return vim.trim(out[1])
 end
 vim.keymap.set("n", "<leader>gd", function()
+  -- JJ repo: same diff view as pressing D on the @ line in <leader>gl log
+  -- (jj.diff.show_revision, diffview backend → new tab). jj has no HEAD.
+  local buf_path = vim.api.nvim_buf_get_name(0)
+  local buf_dir = (buf_path ~= "" and buf_path ~= nil) and vim.fn.fnamemodify(buf_path, ":h") or vim.fn.getcwd()
+  local jj_out = vim.fn.system({ "sh", "-c", "cd " .. vim.fn.shellescape(buf_dir) .. " && jj root 2>/dev/null" })
+  if vim.v.shell_error == 0 and vim.trim(jj_out) ~= "" then
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    require("jj.diff").show_revision({ rev = "@" })
+    return
+  end
   local root = git_root_for_buffer()
   if root and #root > 0 then
     local rev = vim.fn.trim(vim.fn.system("git -C " .. vim.fn.shellescape(root) .. " rev-parse HEAD^ 2>/dev/null"))
@@ -18,7 +28,7 @@ vim.keymap.set("n", "<leader>gd", function()
     end
   end
   vim.cmd("DiffviewOpen HEAD^")
-end, { desc = "Open diffview against previous commit" })
+end, { desc = "Open diffview against previous commit (jj: current patch)" })
 vim.keymap.set("n", "<leader>gD", function()
   local root = git_root_for_buffer()
   local prev_cwd = vim.fn.getcwd()

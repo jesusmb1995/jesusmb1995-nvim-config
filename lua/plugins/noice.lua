@@ -42,6 +42,41 @@ return {
           end
           api.node.open.edit()
         end, { buffer = bufnr, noremap = true, silent = true, desc = "Open file / xdg-open images" })
+
+        -- Hover: show full path as virtual text to the right of the cursor line
+        -- (not a floating box). User found the box-over-box ugly; this renders
+        -- `  <full-path>` at eol, like `full_name` but always visible on hover.
+        local hover_ns = vim.api.nvim_create_namespace("nvimtree-hover-" .. bufnr)
+        local function clear_hover()
+          vim.api.nvim_buf_clear_namespace(bufnr, hover_ns, 0, -1)
+        end
+        local function show_hover(explicit)
+          clear_hover()
+          local node = api.tree.get_node_under_cursor()
+          if not node or not node.absolute_path then return end
+          local win_width = vim.api.nvim_win_get_width(0)
+          local is_truncated = #node.name > (win_width - 10) or #node.absolute_path > win_width
+          if not explicit and not is_truncated and #node.absolute_path <= win_width then return end
+          local text = node.absolute_path
+          if node.type == "directory" then text = text .. "/" end
+          local lnum = vim.api.nvim_win_get_cursor(0)[1] - 1
+          -- render to the right (eol) with subtle highlight, no box
+          vim.api.nvim_buf_set_extmark(bufnr, hover_ns, lnum, 0, {
+            virt_text = { { "  " .. text, "Comment" } },
+            virt_text_pos = "eol",
+            hl_mode = "combine",
+          })
+          if not explicit then vim.defer_fn(clear_hover, 2500) end
+        end
+        vim.keymap.set("n", "K", function() show_hover(true) end, { buffer = bufnr, noremap = true, silent = true, desc = "Show full path to the right (hover)" })
+        vim.api.nvim_create_autocmd("CursorHold", {
+          buffer = bufnr,
+          callback = function() show_hover(false) end,
+        })
+        vim.api.nvim_create_autocmd({ "CursorMoved", "BufLeave", "WinLeave" }, {
+          buffer = bufnr,
+          callback = clear_hover,
+        })
       end
 
       return vim.tbl_deep_extend("force", opts, {

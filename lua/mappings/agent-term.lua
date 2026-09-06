@@ -49,6 +49,8 @@ local function in_agent_term()
   return false
 end
 
+M.in_agent_term = in_agent_term
+
 local function ensure_is_agent_marker()
   local cwd = vim.fn.getcwd()
   -- Register via was-agent (sqlite registry + legacy json dual-write) when

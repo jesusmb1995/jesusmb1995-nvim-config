@@ -67,11 +67,38 @@ local warm_terms = {
 -- approach, which was unreliable in the nested two-tmux setup (autostart probes
 -- for warm-* sessions the daemon never creates). Each toggle reattaches to a
 -- persistent per-id session via -A.
+--
+-- Warm benefit: nvim's `nvim-htoggleTerm-<dir>` etc. now reuse an already
+-- pre-warmed `warm-*` session when one is idle. Before, `new-session -A` always
+-- created a cold shell even though `warm-1@<hash>` etc. were sitting warm.
+-- Now we atomically try to steal an idle warm session and rename it to the
+-- requested `nvim-...` name, so the first terminal open is already warm.
 local function warm_cmd(opts, dir)
   -- opts.id is nil for `new` (<leader>h): each call must spawn its OWN warm
   -- session instead of reattaching a shared one, so derive a one-shot name.
   local id = opts.id or ("adhoc" .. vim.loop.hrtime())
-  return "exec env -u TMUX tmux new-session -A -s nvim-" .. id .. " -c " .. vim.fn.shellescape(dir)
+  local target = "nvim-" .. id
+  local dir_esc = vim.fn.shellescape(dir)
+  local target_esc = vim.fn.shellescape(target)
+  -- shell that tries to steal an idle warm session: list-sessions on the
+  -- DEFAULT socket, pick first `warm-*` with 0 attached clients, rename it to
+  -- the target, then attach (or create) the target. All under `env -u TMUX`
+  -- so we never talk to the outer WM socket.
+  return (
+    "exec sh -c '"
+    .. "set -eu; "
+    .. "target=" .. target_esc .. "; "
+    .. "dir=" .. dir_esc .. "; "
+    -- find first idle warm session (warm-*, warm-*@hash) with 0 clients
+    .. "warm=$(env -u TMUX tmux list-sessions -F \"#{session_name} #{session_attached}\" 2>/dev/null | "
+    .. "awk \"/^warm-/ && \\$2==0 {print \\$1; exit}\" || true); "
+    .. "if [ -n \"$warm\" ]; then "
+    -- rename it to the requested nvim session name (ignore if race, target already exists)
+    .. "env -u TMUX tmux rename-session -t \"$warm\" \"$target\" 2>/dev/null || true; "
+    .. "fi; "
+    .. "exec env -u TMUX tmux new-session -A -s \"$target\" -c \"$dir\"; "
+    .. "'"
+  )
 end
 
 -- Turn a path into a key safe for buffer keys AND tmux session names
@@ -83,6 +110,22 @@ end
 for _, t in ipairs(warm_terms) do
   local lhs, modes, fn, opts, label = t[1], t[2], t[3], t[4], t[5]
   map(modes, lhs, function()
+    -- Guard: <C-g> horizontal toggle disabled when invoked from inside the
+    -- agent terminal sub-window and there are other windows in the tab.
+    -- This prevents the agent pane (which is itself a vsplit) from being
+    -- obscured by a competing horizontal split. When the agent terminal is
+    -- the ONLY window (maximized to a new tab, or the only split), <C-g>
+    -- is allowed — the user explicitly maximized it to work there.
+    if lhs == "<C-g>" then
+      local ok_at, at = pcall(require, "mappings.agent-term")
+      if ok_at and at and at.in_agent_term and at.in_agent_term() then
+        local wins = #vim.api.nvim_tabpage_list_wins(0)
+        if wins > 1 then
+          vim.notify("C-g disabled inside agent terminal (maximize it first if you need a horizontal term)", vim.log.levels.INFO)
+          return
+        end
+      end
+    end
     -- Workspace terminals keyed by WORKING DIRECTORY, not tab: warm_cwd is
     -- the effective cwd (:lcd/:tcd-aware), so every tab sitting at the same
     -- pwd reattaches the SAME terminal buffer and warm tmux session, while
@@ -168,7 +211,9 @@ local function warm_session_from_cmd(cmd)
   end
   -- dir_key output is [a-zA-Z0-9_-] (leading path "/" becomes "_"), so the
   -- class MUST include "_" — %w alone truncates at the first underscore.
-  return cmd:match("tmux new%-session %-A %-s (nvim%-[%w_%-]+)")
+  -- Match nvim-<id> anywhere: old format `new-session -A -s nvim-<id>` AND new
+  -- warm-reuse format `sh -c '... target='nvim-<id>' ... new-session -A -s "$target"'`.
+  return cmd:match("(nvim%-[%w_%-]+)")
 end
 
 -- Fallback when the stored nvchad cmd is gone (e.g. restored session buffers):
@@ -343,6 +388,12 @@ vim.api.nvim_create_autocmd("TermOpen", {
     local buf = vim.api.nvim_get_current_buf()
     vim.api.nvim_set_option_value("winfixwidth", true, {})
     vim.api.nvim_set_option_value("winfixheight", true, {})
+    -- Disable Ctrl-i / Ctrl-o (jump list) inside terminal buffers — they break
+    -- the terminal's own <Tab> / jump handling and can unexpectedly switch buffers.
+    vim.keymap.set("t", "<C-i>", "<Nop>", { buffer = buf, silent = true, desc = "Disabled Ctrl-i in terminal" })
+    vim.keymap.set("t", "<C-o>", "<Nop>", { buffer = buf, silent = true, desc = "Disabled Ctrl-o in terminal" })
+    vim.keymap.set("n", "<C-i>", "<Nop>", { buffer = buf, silent = true, desc = "Disabled Ctrl-i in terminal buffer" })
+    vim.keymap.set("n", "<C-o>", "<Nop>", { buffer = buf, silent = true, desc = "Disabled Ctrl-o in terminal buffer" })
     vim.keymap.set("n", "]f", function() jump_terminal_file_ref(true) end, {
       buffer = buf,
       silent = true,
@@ -384,23 +435,69 @@ vim.api.nvim_create_autocmd("TermOpen", {
     local sess = (term_opts and warm_session_from_cmd(term_opts.cmd)) or warm_session_from_tty()
     if sess and sess:match "^nvim%-" then
       vim.b[buf].warm_tmux_session = sess
-      vim.keymap.set("t", "<C-l>", function() send_warm_hint("t") end, {
+      -- Use Ctrl+Shift+l (C-S-l / C-L) ONLY on tmux terminals for the agent hint.
+      -- Plain C-l must behave as "go right" (same as C-x then l: exit to normal
+      -- and wincmd l). agent-term.lua sets a GLOBAL t <C-l>; shadow it here.
+      vim.keymap.set("t", "<C-l>", function()
+        vim.cmd("stopinsert")
+        vim.cmd("wincmd l")
+      end, {
         buffer = buf,
         silent = true,
         nowait = true,
-        desc = "Send tmux session hint to agent terminal",
+        desc = "Normal navigation right (C-x then l equivalent)",
       })
-      vim.keymap.set("n", "<C-l>", function() send_warm_hint("n") end, {
+      vim.keymap.set("n", "<C-l>", function()
+        vim.cmd("wincmd l")
+      end, {
         buffer = buf,
         silent = true,
         nowait = true,
-        desc = "Send tmux session + cursor line hint to agent terminal",
+        desc = "Normal navigation right (C-x then l)",
       })
-      vim.keymap.set("x", "<C-l>", function() send_warm_hint("x") end, {
+      vim.keymap.set("x", "<C-l>", "<Nop>", {
         buffer = buf,
         silent = true,
         nowait = true,
-        desc = "Send tmux session + selection hint to agent terminal",
+        desc = "Noop in tmux terminal visual (use Ctrl+Shift+l for hint)",
+      })
+      -- Use Ctrl+Shift+l (C-S-l / C-L) on tmux terminals to avoid clashing with
+      -- Ctrl+x then l (e.g. window navigation that includes l) and plain C-l
+      vim.keymap.set("t", "<C-S-l>", function() send_warm_hint("t") end, {
+        buffer = buf,
+        silent = true,
+        nowait = true,
+        desc = "Send tmux session hint to agent terminal (Ctrl+Shift+l)",
+      })
+      vim.keymap.set("t", "<C-L>", function() send_warm_hint("t") end, {
+        buffer = buf,
+        silent = true,
+        nowait = true,
+        desc = "Send tmux session hint to agent terminal (Ctrl+Shift+l)",
+      })
+      vim.keymap.set("n", "<C-S-l>", function() send_warm_hint("n") end, {
+        buffer = buf,
+        silent = true,
+        nowait = true,
+        desc = "Send tmux session + cursor line hint to agent terminal (Ctrl+Shift+l)",
+      })
+      vim.keymap.set("n", "<C-L>", function() send_warm_hint("n") end, {
+        buffer = buf,
+        silent = true,
+        nowait = true,
+        desc = "Send tmux session + cursor line hint to agent terminal (Ctrl+Shift+l)",
+      })
+      vim.keymap.set("x", "<C-S-l>", function() send_warm_hint("x") end, {
+        buffer = buf,
+        silent = true,
+        nowait = true,
+        desc = "Send tmux session + selection hint to agent terminal (Ctrl+Shift+l)",
+      })
+      vim.keymap.set("x", "<C-L>", function() send_warm_hint("x") end, {
+        buffer = buf,
+        silent = true,
+        nowait = true,
+        desc = "Send tmux session + selection hint to agent terminal (Ctrl+Shift+l)",
       })
     end
   end,

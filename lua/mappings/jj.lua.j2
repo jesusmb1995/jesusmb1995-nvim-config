@@ -1,4 +1,4 @@
-{% if system_tools.jj %}
+{% if system_tools.jj or features.jj | default('false') == 'true' %}
 -- jj.nvim leader mappings. Mirror the neogit g-prefix (neogit is gated off in jj
 -- mode, so no clash). Uses :JJ (alias for :J) to avoid conflict with cmd_bookmarks'
 -- :J command. The lua callbacks trigger load explicitly via lazy.load.
@@ -30,8 +30,24 @@ local function _with_jj_repo(fn)
   end
 end
 
+-- Run fn with cwd pinned to jj_root, then restore. MUST wrap every
+-- vim.ui.select / vim.ui.input callback: _with_jj_repo restores cwd as soon as
+-- the (synchronous) picker is *opened*, so by the time the user picks, cwd is
+-- back wherever it was — and jj/diffview then fail with "not a repo".
+-- Capture jj_root in the mapping BEFORE _with_jj_repo (buffer may change while
+-- the picker is open, so do NOT re-derive it inside the callback).
+local function _jj_in_root(jj_root, fn)
+  local cwd = vim.fn.getcwd()
+  vim.fn.chdir(jj_root)
+  local ok, err = pcall(fn)
+  vim.fn.chdir(cwd)
+  if not ok then
+    vim.notify("jj action failed: " .. tostring(err), vim.log.levels.ERROR)
+  end
+end
+
 local function _get_current_bookmark(runner)
-  local out = runner.execute_command("jj log -r '::@ & bookmarks()' --no-graph -T 'bookmarks.map(|b| b.name()).join(\"\\n\")' --limit 1 2>/dev/null", nil, nil, true)
+  local out = runner.execute_command("jj log --ignore-working-copy -r '::@ & bookmarks()' --no-graph -T 'bookmarks.map(|b| b.name()).join(\"\\n\")' --limit 1 2>/dev/null", nil, nil, true)
   if not out then return nil end
   for _, line in ipairs(vim.split(out, "\n")) do
     line = vim.trim(line)
@@ -45,6 +61,7 @@ map("n", "<leader>gg", "<cmd>JJ status<CR>", { desc = "jj status" })
 map("n", "<leader>gl", "<cmd>JJ log<CR>", { desc = "jj log" })
 map("n", "<leader>gkg", function()
   _with_jj_repo(function()
+  local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
     require("lazy").load({ plugins = { "jj.nvim" } })
     require("jj.cmd").log({ revisions = "mutable()" })
   end)
@@ -55,41 +72,84 @@ map("n", "<leader>gn", "<cmd>JJ new<CR>", { desc = "jj new [<parent>]" })
 -- gN: prompt <name> -> jj bookmark create <name> -r @
 map("n", "<leader>gN", function()
   _with_jj_repo(function()
+  local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
     require("lazy").load({ plugins = { "jj.nvim" } })
     local runner = require("jj.core.runner")
     local utils = require("jj.utils")
     vim.ui.input({ prompt = "New bookmark name: " }, function(input)
+      _jj_in_root(jj_root_cap, function()
       if not input or vim.trim(input) == "" then
         vim.notify("Aborted", vim.log.levels.WARN)
         return
       end
       local name = vim.trim(input)
       runner.execute_command_async("jj bookmark create " .. vim.fn.shellescape(name) .. " -r @", function()
+        _jj_in_root(jj_root_cap, function()
         utils.notify("Created bookmark " .. name .. " at @", vim.log.levels.INFO)
         if require("jj.ui.terminal").is_log_buffer_open() then
           require("jj.cmd").log({})
         end
+        end)
       end, "Error creating bookmark")
+      end)
     end)
   end)
 end, { desc = "jj bookmark create <name> -r @" })
 map("n", "<leader>gc", "<cmd>JJ commit<CR>", { desc = "jj commit \"<description>\"" })
 map("n", "<leader>ge", "<cmd>JJ describe<CR>", { desc = "jj describe [<change>]" })
-map("n", "<leader>grs", "<cmd>JJ squash<CR>", { desc = "jj squash" })
+map("n", "<leader>grs", function()
+  _with_jj_repo(function()
+  local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    local ok_term, terminal = pcall(require, "jj.ui.terminal")
+    if ok_term and terminal and terminal.run_floating then
+      -- Use floating with interactive so :w/:q go to the inner nvim editor (ui.editor=nvim), not host.
+      -- jj squash may open $EDITOR (nvim) for the squash message; interactive ensures the terminal job handles it.
+      local ok, err = pcall(terminal.run_floating, { "jj", "squash" }, nil, {
+        interactive = true,
+        title = " JJ squash (:w → inner nvim) ",
+        on_exit = function(code)
+          _jj_in_root(jj_root_cap, function()
+          if code == 0 then
+            vim.notify("Squashed (via nvim editor)", vim.log.levels.INFO)
+            if terminal.is_log_buffer_open and terminal.is_log_buffer_open() then require("jj.cmd").log({}) end
+          else
+            vim.notify("Squash exit " .. tostring(code) .. " — check :NoiceAll, try :w then :q in inner nvim", vim.log.levels.WARN)
+          end
+          end)
+        end,
+      })
+      if not ok then
+        vim.notify("Floating squash failed: " .. tostring(err) .. " — falling back to :JJ squash", vim.log.levels.WARN)
+        pcall(vim.cmd, "JJ squash")
+      else
+        vim.notify("JJ squash floating opened — :w writes inner nvim, :q closes editor", vim.log.levels.INFO)
+        return
+      end
+    end
+    -- Fallback: plain JJ squash (host nvim will handle editor, but :w may go to host)
+    local ok, err = pcall(vim.cmd, "JJ squash")
+    if not ok then vim.notify("JJ squash failed: " .. tostring(err), vim.log.levels.ERROR)
+    else vim.notify("JJ squash executed (check :NoiceAll)", vim.log.levels.INFO) end
+  end)
+end, { desc = "jj squash (floating nvim, :w → inner)" })
 map("n", "<leader>grd", "<cmd>JJ rebase<CR>", { desc = "jj rebase -d <destination>" })
 map("n", "<leader>gS", "<cmd>JJ split<CR>", { desc = "jj split [<change>]" })
 map("n", "<leader>gR", "<cmd>JJ resolve<CR>", { desc = "jj resolve [<files>...]" })
 -- ga: abandon current @ directly
 map("n", "<leader>ga", function()
   _with_jj_repo(function()
+  local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
     require("lazy").load({ plugins = { "jj.nvim" } })
     local runner = require("jj.core.runner")
     local utils = require("jj.utils")
     runner.execute_command_async("jj abandon @", function()
+      _jj_in_root(jj_root_cap, function()
       utils.notify("Abandoned @", vim.log.levels.INFO)
       if require("jj.ui.terminal").is_log_buffer_open() then
         require("jj.cmd").log({})
       end
+      end)
     end, "Error abandoning @")
   end)
 end, { desc = "jj abandon @" })
@@ -99,6 +159,7 @@ map("n", "<leader>gU", "<cmd>JJ redo<CR>", { desc = "jj redo" })
 -- gm: pick a bookmark/branch -> jj new <1> @ -> describe -m "merge <1st_line[:40]> into <@_1st_line[:40]>"
 map("n", "<leader>gm", function()
   _with_jj_repo(function()
+  local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
     require("lazy").load({ plugins = { "jj.nvim" } })
     local utils = require("jj.utils")
     local runner = require("jj.core.runner")
@@ -110,6 +171,7 @@ map("n", "<leader>gm", function()
     vim.ui.select(bookmarks, {
       prompt = "Merge into @:",
     }, function(choice)
+      _jj_in_root(jj_root_cap, function()
       if not choice then return end
       local name = vim.fn.trim(choice)
       local function first_line(text, limit)
@@ -120,17 +182,20 @@ map("n", "<leader>gm", function()
         if limit and #line > limit then return line:sub(1, limit) .. "..." end
         return line
       end
-      local b_desc = runner.execute_command("jj log -r " .. vim.fn.shellescape(name) .. " --no-graph -T 'description' 2>/dev/null", nil, nil, true)
-      local c_desc = runner.execute_command("jj log -r @ --no-graph -T 'description' 2>/dev/null", nil, nil, true)
+      local b_desc = runner.execute_command("jj log --ignore-working-copy -r " .. vim.fn.shellescape(name) .. " --no-graph -T 'description' 2>/dev/null", nil, nil, true)
+      local c_desc = runner.execute_command("jj log --ignore-working-copy -r @ --no-graph -T 'description' 2>/dev/null", nil, nil, true)
       local msg = "merge " .. first_line(b_desc, 40) .. " into " .. first_line(c_desc, 40)
       runner.execute_command_async("jj new " .. vim.fn.shellescape(name) .. " @", function()
         runner.execute_command_async("jj describe -m " .. vim.fn.shellescape(msg), function()
+          _jj_in_root(jj_root_cap, function()
           utils.notify("Merged " .. name .. " into @", vim.log.levels.INFO)
           if require("jj.ui.terminal").is_log_buffer_open() then
             require("jj.cmd").log({})
           end
+          end)
         end, "Error setting merge description")
       end, "Error merging")
+      end)
     end)
   end)
 end, { desc = "jj: pick <bookmark>; jj new <1> @; jj describe -m \"merge <...>\"" })
@@ -138,10 +203,11 @@ end, { desc = "jj: pick <bookmark>; jj new <1> @; jj describe -m \"merge <...>\"
 -- gM: list all heads (including anonymous) -> pick one -> jj new <1> @ (merge)
 map("n", "<leader>gM", function()
   _with_jj_repo(function()
+  local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
     require("lazy").load({ plugins = { "jj.nvim" } })
     local runner = require("jj.core.runner")
     local utils = require("jj.utils")
-    local out = runner.execute_command("jj log -r 'heads(all())' --no-graph -T 'commit_id.shortest(12) \"\\t\" if(bookmarks, separate(\" \", bookmarks), \"\") \"\\t\" description.first_line()' 2>/dev/null", nil, nil, true)
+    local out = runner.execute_command("jj log --ignore-working-copy -r 'heads(all())' --no-graph -T 'commit_id.shortest(12) ++ \"\\t\" ++ if(bookmarks, separate(\" \", bookmarks), \"\") ++ \"\\t\" ++ description.first_line()' 2>/dev/null", nil, nil, true)
     if not out or out == "" then
       vim.notify("No heads found", vim.log.levels.WARN)
       return
@@ -167,6 +233,7 @@ map("n", "<leader>gM", function()
       prompt = "Merge into @:",
       format_item = function(item) return item.label end,
     }, function(choice)
+      _jj_in_root(jj_root_cap, function()
       if not choice then return end
       local function first_line(text, limit)
         if not text or text == "" then return "" end
@@ -176,17 +243,20 @@ map("n", "<leader>gM", function()
         if limit and #line > limit then return line:sub(1, limit) .. "..." end
         return line
       end
-      local b_desc = runner.execute_command("jj log -r " .. vim.fn.shellescape(choice.rev) .. " --no-graph -T 'description' 2>/dev/null", nil, nil, true)
-      local c_desc = runner.execute_command("jj log -r @ --no-graph -T 'description' 2>/dev/null", nil, nil, true)
+      local b_desc = runner.execute_command("jj log --ignore-working-copy -r " .. vim.fn.shellescape(choice.rev) .. " --no-graph -T 'description' 2>/dev/null", nil, nil, true)
+      local c_desc = runner.execute_command("jj log --ignore-working-copy -r @ --no-graph -T 'description' 2>/dev/null", nil, nil, true)
       local msg = "merge " .. first_line(b_desc, 40) .. " into " .. first_line(c_desc, 40)
       runner.execute_command_async("jj new " .. vim.fn.shellescape(choice.rev) .. " @", function()
         runner.execute_command_async("jj describe -m " .. vim.fn.shellescape(msg), function()
+          _jj_in_root(jj_root_cap, function()
           utils.notify("Merged " .. choice.rev .. " into @", vim.log.levels.INFO)
           if require("jj.ui.terminal").is_log_buffer_open() then
             require("jj.cmd").log({})
           end
+          end)
         end, "Error setting merge description")
       end, "Error merging")
+      end)
     end)
   end)
 end, { desc = "jj: heads(all()) -> pick -> jj new <1> @; jj describe -m \"merge <...>\"" })
@@ -194,6 +264,7 @@ end, { desc = "jj: heads(all()) -> pick -> jj new <1> @; jj describe -m \"merge 
 -- gbb: list bookmarks -> pick one -> jj edit <1>
 map("n", "<leader>gbb", function()
   _with_jj_repo(function()
+  local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
     require("lazy").load({ plugins = { "jj.nvim" } })
     local utils = require("jj.utils")
     local bookmarks = utils.get_all_bookmarks()
@@ -204,16 +275,20 @@ map("n", "<leader>gbb", function()
     vim.ui.select(bookmarks, {
       prompt = "Jump to bookmark",
     }, function(choice)
+      _jj_in_root(jj_root_cap, function()
       if choice then
         local runner = require("jj.core.runner")
         local name = vim.fn.trim(choice)
         runner.execute_command_async("jj edit " .. vim.fn.shellescape(name), function()
+          _jj_in_root(jj_root_cap, function()
           utils.notify("Jumped to bookmark " .. name, vim.log.levels.INFO)
           if require("jj.ui.terminal").is_log_buffer_open() then
             require("jj.cmd").log({})
           end
+          end)
         end, "Error jumping to bookmark")
       end
+      end)
     end)
   end)
 end, { desc = "jj bookmark list -> pick -> jj edit <1>" })
@@ -221,14 +296,16 @@ end, { desc = "jj bookmark list -> pick -> jj edit <1>" })
 -- gbB: show all heads (including anonymous) for browsing; e/<CR> to jump
 map("n", "<leader>gbB", function()
   _with_jj_repo(function()
+  local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
     require("lazy").load({ plugins = { "jj.nvim" } })
     require("jj.cmd").log({ revisions = "heads(all())" })
   end)
-end, { desc = "jj log -r 'heads(all())' (all heads)" })
+end, { desc = "jj log --ignore-working-copy -r 'heads(all())' (all heads)" })
 
 -- gbc: prompt <name> -> prompt <revset> -> jj b c <1> -r <2>
 map("n", "<leader>gbc", function()
   _with_jj_repo(function()
+  local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
     require("lazy").load({ plugins = { "jj.nvim" } })
     require("jj.cmd").bookmark_create()
   end)
@@ -237,13 +314,14 @@ end, { desc = "jj b c <name> -r <revset>" })
 -- gbC: pick bookmark (topo-sorted) -> jj b m <1> --to @ -B (move to @)
 map("n", "<leader>gbC", function()
   _with_jj_repo(function()
+  local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
     require("lazy").load({ plugins = { "jj.nvim" } })
     local runner = require("jj.core.runner")
     local utils = require("jj.utils")
 
     -- Get topo-sorted bookmarks: earliest parents first
     local out = runner.execute_command(
-      "jj log -r 'all()' --no-graph -T 'if(bookmarks, bookmarks.map(|b| b.name()).join(\" \") .. \"\\n\", \"\")' --reverse 2>/dev/null",
+      "jj log --ignore-working-copy -r 'all()' --no-graph -T 'if(bookmarks, bookmarks.map(|b| b.name()).join(\" \") .. \"\\n\", \"\")' --reverse 2>/dev/null",
       nil, nil, true
     )
     local ordered = {}
@@ -281,14 +359,18 @@ map("n", "<leader>gbC", function()
     vim.ui.select(sorted, {
       prompt = "Move bookmark to @:",
     }, function(choice)
+      _jj_in_root(jj_root_cap, function()
       if not choice then return end
       local name = vim.fn.trim(choice)
       runner.execute_command_async("jj b m " .. vim.fn.shellescape(name) .. " --to @ -B", function()
+        _jj_in_root(jj_root_cap, function()
         utils.notify("Moved bookmark " .. name .. " to @", vim.log.levels.INFO)
         if require("jj.ui.terminal").is_log_buffer_open() then
           require("jj.cmd").log({})
         end
+        end)
       end, "Error moving bookmark")
+      end)
     end)
   end)
 end, { desc = "jj: pick <bookmark>; jj b m <1> --to @ -B" })
@@ -296,11 +378,90 @@ end, { desc = "jj: pick <bookmark>; jj b m <1> --to @ -B" })
 map("n", "<leader>gB", "<cmd>JJ annotate<CR>", { desc = "jj annotate <file>" })
 map("n", "<leader>gp", "<cmd>JJ push<CR>", { desc = "jj git push [--bookmark <1>] [-r <remote>]" })
 map("n", "<leader>gf", "<cmd>JJ fetch<CR>", { desc = "jj git fetch [-r <remote>]" })
-map("n", "<leader>go", "<cmd>JJ open_pr<CR>", { desc = "jj log -r @ -T bookmarks; open browser <url>" })
+map("n", "<leader>go", "<cmd>JJ open_pr<CR>", { desc = "jj log --ignore-working-copy -r @ -T bookmarks; open browser <url>" })
 map("n", "<leader>gw", "<cmd>JJbrowse<CR>", { desc = "jj: open file on remote in browser" })
+
+-- gF: move current buffer's file diff ( @ vs parent ) to another change — picker for destination
+map("n", "<leader>gF", function()
+  local buf = vim.api.nvim_get_current_buf()
+  local file = vim.api.nvim_buf_get_name(buf)
+  if file == "" then
+    vim.notify("No file in current buffer", vim.log.levels.WARN)
+    return
+  end
+  _with_jj_repo(function()
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    local runner = require("jj.core.runner")
+    local jj_root = _find_jj_root() or vim.fn.getcwd()
+    local rel = file
+    if vim.startswith(file, jj_root .. "/") then
+      rel = file:sub(#jj_root + 2)
+    else
+      rel = vim.fn.fnamemodify(file, ":.")
+    end
+    if rel == "" then
+      vim.notify("Cannot determine file path relative to jj root", vim.log.levels.WARN)
+      return
+    end
+    -- Quick check: is file modified in @ ? (warn but still allow)
+    local diff_check = runner.execute_command("jj diff --name-only -r @ 2>/dev/null", nil, nil, true)
+    if diff_check and diff_check ~= "" and not diff_check:match(vim.pesc(rel)) then
+      -- file not in diff vs parent; check vs @- then? just notify
+      vim.notify("File '" .. rel .. "' not modified in @ (no diff vs parent) — squash will be no-op if empty", vim.log.levels.WARN)
+    end
+    -- List candidate destinations: previous commits (not just mutable). User sees previous commits but mutable() can be empty; also large files (grammars) cause snapshot refusal without --ignore-working-copy.
+    -- Try ancestors first (most relevant), fallback to mutable.
+    local out = runner.execute_command("jj log --ignore-working-copy -r 'ancestors(@, 20) ~ @' --no-graph -T 'change_id.shortest(8) ++ \"\\t\" ++ commit_id.shortest(8) ++ \"\\t\" ++ if(bookmarks, bookmarks.map(|b| b.name()).join(\",\"), \"\") ++ \"\\t\" ++ description.first_line()' 2>/dev/null", nil, nil, true)
+    if not out or vim.trim(out) == "" then
+      out = runner.execute_command("jj log --ignore-working-copy -r 'mutable() & ~@' --no-graph -T 'change_id.shortest(8) ++ \"\\t\" ++ commit_id.shortest(8) ++ \"\\t\" ++ if(bookmarks, bookmarks.map(|b| b.name()).join(\",\"), \"\") ++ \"\\t\" ++ description.first_line()' 2>/dev/null", nil, nil, true)
+    end
+    if not out or vim.trim(out) == "" then
+      vim.notify("No destinations found (no ancestors besides @)", vim.log.levels.WARN)
+      return
+    end
+    local items = {}
+    for _, line in ipairs(vim.split(out, "\n")) do
+      line = vim.trim(line)
+      if line ~= "" then
+        local parts = vim.split(line, "\t")
+        local change = parts[1] or ""
+        local commit = parts[2] or ""
+        local bms = parts[3] or ""
+        local desc = parts[4] or ""
+        local label = change .. " " .. (bms ~= "" and ("[" .. bms .. "] ") or "") .. desc
+        if label:match("^%s*$") then label = change end
+        table.insert(items, { rev = change, label = label, commit = commit, bms = bms, desc = desc })
+      end
+    end
+    if #items == 0 then
+      vim.notify("No destinations to move to", vim.log.levels.WARN)
+      return
+    end
+    vim.ui.select(items, {
+      prompt = "Move '" .. rel .. "' diff to revision:",
+      format_item = function(item) return item.label end,
+    }, function(choice)
+      _jj_in_root(jj_root, function()
+      if not choice then return end
+      local dest = vim.trim(choice.rev)
+      -- Use jj squash --from @ --into <dest> -- <file>
+      local cmd = "jj squash --from @ --into " .. vim.fn.shellescape(dest) .. " -- " .. vim.fn.shellescape(rel)
+      runner.execute_command_async(cmd, function()
+        _jj_in_root(jj_root, function()
+        require("jj.utils").notify("Moved '" .. rel .. "' changes from @ into " .. dest, vim.log.levels.INFO)
+        if require("jj.ui.terminal").is_log_buffer_open() then
+          require("jj.cmd").log({})
+        end
+        end)
+      end, "Error moving file to " .. dest)
+      end)
+    end)
+  end)
+end, { desc = "jj: move current file diff (@) into selected revision (--from @ --into <pick> -- <file>)" })
 
 map("n", "<leader>gbS", function()
   _with_jj_repo(function()
+  local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
     require("lazy").load({ plugins = { "jj.nvim" } })
     local runner = require("jj.core.runner")
     local bm = _get_current_bookmark(runner)
@@ -309,30 +470,38 @@ map("n", "<leader>gbS", function()
       return
     end
     runner.execute_command_async("jj bookmark set " .. vim.fn.shellescape(bm) .. " -r @", function()
+      _jj_in_root(jj_root_cap, function()
       require("jj.utils").notify("Set " .. bm .. " to @", vim.log.levels.INFO)
+      end)
     end, "Error setting bookmark")
   end)
 end, { desc = "jj: set current bookmark to @" })
 
 local function _do_push_with_bookmark(bm, utils, runner)
+  local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
   runner.execute_command_async("jj bookmark set " .. vim.fn.shellescape(bm) .. " -r @", function()
     utils.notify("Set " .. bm .. " to @, pushing...", vim.log.levels.INFO)
     runner.execute_command_async("jj git push", function()
+      _jj_in_root(jj_root_cap, function()
       utils.notify("Pushed " .. bm, vim.log.levels.INFO)
+      end)
     end, "Error pushing")
   end, "Error setting bookmark")
 end
 
 local function _describe_then_push()
+  local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
   require("lazy").load({ plugins = { "jj.nvim" } })
   local runner = require("jj.core.runner")
   local utils = require("jj.utils")
   vim.ui.input({ prompt = "Commit description: " }, function(input)
+    _jj_in_root(jj_root_cap, function()
     if not input or input == "" then
       vim.notify("Aborted", vim.log.levels.WARN)
       return
     end
     runner.execute_command_async("jj describe -m " .. vim.fn.shellescape(input), function()
+      _jj_in_root(jj_root_cap, function()
       utils.notify("Described @", vim.log.levels.INFO)
       local bm = _get_current_bookmark(runner)
       if bm == "" then
@@ -340,15 +509,18 @@ local function _describe_then_push()
         return
       end
       _do_push_with_bookmark(bm, utils, runner)
+      end)
     end, "Error describing @")
+    end)
   end)
 end
 
 map("n", "<leader>gP", function()
   _with_jj_repo(function()
+  local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
     require("lazy").load({ plugins = { "jj.nvim" } })
     local runner = require("jj.core.runner")
-    local desc = runner.execute_command("jj log -r @ --no-graph -T 'description' 2>/dev/null", nil, nil, true)
+    local desc = runner.execute_command("jj log --ignore-working-copy -r @ --no-graph -T 'description' 2>/dev/null", nil, nil, true)
     if not desc or vim.trim(desc) == "" then
       _describe_then_push()
       return
@@ -362,4 +534,295 @@ map("n", "<leader>gP", function()
     _do_push_with_bookmark(bm, utils, runner)
   end)
 end, { desc = "jj: if empty, describe; then set bookmark to @ and push" })
+
+-- gkc: jj duplicate (branch clone) — auto-increment bookmark name
+map("n", "<leader>gkc", function()
+  _with_jj_repo(function()
+  local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    local runner = require("jj.core.runner")
+    local utils = require("jj.utils")
+    local cur_bm = _get_current_bookmark(runner) or ""
+    local desc = runner.execute_command("jj log --ignore-working-copy -r @ --no-graph -T 'description.first_line()' 2>/dev/null", nil, nil, true) or ""
+    desc = vim.trim(desc)
+    local function random_letters(n)
+      local s = ""
+      for i = 1, n do s = s .. string.char(math.random(97, 122)) end
+      return s
+    end
+    local function suggest_name()
+      if cur_bm ~= "" then
+        local base, num = cur_bm:match("^(.-)(%d+)$")
+        if base and num then
+          return base .. (tonumber(num) + 1)
+        else
+          return cur_bm .. "2"
+        end
+      else
+        -- No bookmark: original becomes N=1, duplicate N>=2, so numbers go up.
+        -- Suggest N=2 (the duplicate's name shown in the dialogue).
+        if desc ~= "" then
+          local words = {}
+          for w in desc:gmatch("%S+") do table.insert(words, w); if #words >= 4 then break end end
+          if #words > 0 then
+            local j = table.concat(words, "_"):gsub("%W", "_"):lower():sub(1, 30)
+            if #j >= 3 then return j .. "2" end
+          end
+        end
+        return random_letters(4) .. "2"
+      end
+    end
+    local suggested = suggest_name()
+    vim.ui.input({ prompt = "New bookmark (duplicate @): ", default = suggested }, function(input)
+      _jj_in_root(jj_root_cap, function()
+      if not input or vim.trim(input) == "" then vim.notify("Aborted", vim.log.levels.WARN) return end
+      local new_name = vim.trim(input)
+      -- Branch-clone pair: namings must match except number postfix (see GD).
+      -- Stack with bookmark: original keeps it, duplicate gets new_name.
+      -- Stack with NO bookmark: original @ also needs the base name, else only
+      -- one bookmark exists and the pair is broken.
+      local dup_name = new_name
+      local orig_name = nil
+      if cur_bm == "" then
+        -- Original is always N=1, duplicates N>=2 and increasing.
+        local base = new_name:match("^(.-)%d+$") or new_name
+        if base == "" then base = new_name end
+        orig_name = base .. "1"
+        if not new_name:match("%d+$") then
+          dup_name = base .. "2"
+        end
+        if dup_name == orig_name then
+          dup_name = base .. "2"
+        end
+      end
+      -- duplicate whole stack until first immutable (not just @). User saw empty patches when only @ was duplicated.
+      -- `ancestors(@) & mutable()` is the mutable stack; `trunk()` is immutable root.
+      local dup_revset = "ancestors(@) & mutable()"
+      local out = runner.execute_command("jj duplicate --ignore-working-copy -r '" .. dup_revset .. "' 2>&1", nil, nil, true) or ""
+      -- `jj duplicate` prints e.g. `Duplicated <old> as <new> ...` per duplicated commit; for a stack, last `as <id>` is the tip (duplicate of @)
+      local new_change = nil
+      for m in out:gmatch("as%s+(%S+)") do new_change = m end
+      if not new_change then new_change = out:match("(%w+)%s+%S*%s*$") end
+      -- fallback for stack: find duplicate tip that shares @'s description but is not @
+      if not new_change or #new_change < 4 then
+        local at = vim.trim(runner.execute_command("jj log --ignore-working-copy -r @ --no-graph -T 'change_id.shortest(8)' 2>/dev/null", nil, nil, true) or "")
+        local at_desc = vim.trim(desc)
+        if at_desc ~= "" then
+          local esc = at_desc:gsub("'", "'\\''")
+          local cand = runner.execute_command("jj log --ignore-working-copy -r 'all() & description(exact:" .. vim.fn.shellescape(esc) .. ")' --no-graph -T 'change_id.shortest(8) ++ \"\\n\"' 2>/dev/null", nil, nil, true) or ""
+          for _, cid in ipairs(vim.split(cand, "\n")) do
+            cid = vim.trim(cid)
+            if cid ~= "" and cid ~= at then new_change = cid; break end
+          end
+        end
+        if not new_change then
+          local children = runner.execute_command("jj log --ignore-working-copy -r 'children(@-)' --no-graph -T 'change_id.shortest(8) ++ \"\\n\"' 2>/dev/null", nil, nil, true) or ""
+          for _, cid in ipairs(vim.split(children, "\n")) do
+            cid = vim.trim(cid)
+            if cid ~= "" and cid ~= at then new_change = cid; break end
+          end
+        end
+      end
+      if not new_change or new_change == "" then
+        vim.notify("Duplicate succeeded but could not find new change id", vim.log.levels.WARN)
+        return
+      end
+      if orig_name then
+        -- best effort: name the original so the pair exists even if dup fails
+        runner.execute_command("jj bookmark create --ignore-working-copy " .. vim.fn.shellescape(orig_name) .. " -r @ 2>/dev/null", nil, nil, true)
+      end
+      runner.execute_command_async("jj bookmark create --ignore-working-copy " .. vim.fn.shellescape(dup_name) .. " -r " .. vim.fn.shellescape(new_change), function()
+        _jj_in_root(jj_root_cap, function()
+        if orig_name then
+          utils.notify("Cloned stack: " .. orig_name .. " (original @) + " .. dup_name .. " (duplicate " .. new_change .. ")", vim.log.levels.INFO)
+        else
+          utils.notify("Duplicated @ as " .. new_change .. " with bookmark " .. dup_name, vim.log.levels.INFO)
+        end
+        if require("jj.ui.terminal").is_log_buffer_open() then require("jj.cmd").log({}) end
+        end)
+      end, "Error creating bookmark on duplicate")
+      end)
+    end)
+  end)
+end, { desc = "jj duplicate stack → bookmark pair (auto-increment)" })
+
+-- gw* helpers: jj workspace list parsing. NOTE: <leader>gwg itself lives in
+-- mappings.git-worktrees (loaded after this file, wins the duplicate) with full
+-- jj-shadowing; do NOT define gwg here or the two fight.
+-- `jj workspace list` prints "<name>: <path> <change> <desc...>" plus possible
+-- status lines (e.g. "Rebased N descendants..."). Path is the FIRST token after
+-- "name: "; everything after is change/desc junk. Lines without "name:" are skipped.
+local function _jj_workspace_list()
+  local runner = require("jj.core.runner")
+  local out = runner.execute_command("jj workspace list 2>/dev/null", nil, nil, true) or ""
+  local list = {}
+  for _, line in ipairs(vim.split(out, "\n")) do
+    line = vim.trim(line)
+    if line ~= "" then
+      local name, rest = line:match("^(%S+):%s*(.+)$")
+      if name and rest then
+        local path = rest:match("^(%S+)")
+        if path then table.insert(list, { name = name, path = path, label = line }) end
+      end
+    end
+  end
+  return list
+end
+local function _is_jj_repo() return _find_jj_root() ~= nil end
+
+map("n", "<leader>gwa", function()
+  _with_jj_repo(function()
+  local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    vim.ui.input({ prompt = "New workspace name: " }, function(name)
+      _jj_in_root(jj_root_cap, function()
+      if not name or vim.trim(name) == "" then return end
+      name = vim.trim(name)
+      vim.ui.input({ prompt = "Workspace path (empty = ../<name>): " }, function(path)
+        _jj_in_root(jj_root_cap, function()
+        if path ~= nil then
+          path = vim.trim(path)
+          if path == "" then path = "../" .. name end
+          local runner = require("jj.core.runner")
+          runner.execute_command_async("jj workspace add --name " .. vim.fn.shellescape(name) .. " " .. vim.fn.shellescape(path), function()
+            _jj_in_root(jj_root_cap, function()
+            require("jj.utils").notify("Added workspace " .. name .. " at " .. path, vim.log.levels.INFO)
+            end)
+          end, "Error adding workspace")
+        end
+        end)
+      end)
+      end)
+    end)
+  end)
+end, { desc = "jj workspace add" })
+
+map("n", "<leader>gwd", function()
+  _with_jj_repo(function()
+  local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    local ws = _jj_workspace_list()
+    if #ws == 0 then vim.notify("No jj workspaces", vim.log.levels.WARN) return end
+    vim.ui.select(ws, { prompt = "Forget jj workspace:", format_item = function(i) return i.label end }, function(choice)
+      _jj_in_root(jj_root_cap, function()
+      if not choice then return end
+      local runner = require("jj.core.runner")
+      runner.execute_command_async("jj workspace forget " .. vim.fn.shellescape(choice.name), function()
+        _jj_in_root(jj_root_cap, function()
+        require("jj.utils").notify("Forgot workspace " .. choice.name, vim.log.levels.INFO)
+        end)
+      end, "Error forgetting workspace")
+      end)
+    end)
+  end)
+end, { desc = "jj workspace forget" })
+
+-- Gd: pick FROM then TO (like multi-select D in <leader>gl log) → diffview tab.
+-- FROM excludes @ (diff @..@ would be empty); TO defaults to @ first.
+map("n", "<leader>Gd", function()
+  local gd_root = _find_jj_root() or vim.fn.getcwd()
+  _with_jj_repo(function()
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    local runner = require("jj.core.runner")
+    local out = runner.execute_command("jj log --ignore-working-copy -r 'ancestors(@, 20) ~ @' --no-graph -T 'change_id.shortest(8) ++ \"\\t\" ++ commit_id.shortest(8) ++ \"\\t\" ++ description.first_line()' 2>/dev/null", nil, nil, true) or ""
+    local items = {}
+    for _, line in ipairs(vim.split(out, "\n")) do
+      line = vim.trim(line)
+      if line ~= "" then
+        local cid, desc = line:match("^([^\t]+)\t([^\t]*)")
+        table.insert(items, { rev = cid, label = cid .. " " .. (desc or "") })
+      end
+    end
+    if #items == 0 then vim.notify("No previous history besides @", vim.log.levels.WARN) return end
+    vim.ui.select(items, { prompt = "Diff FROM (older):", format_item = function(i) return i.label end }, function(from_choice)
+      if not from_choice then return end
+      local from = vim.trim(from_choice.rev)
+      local to_items = { { rev = "@", label = "@ (current)" } }
+      for _, it in ipairs(items) do table.insert(to_items, it) end
+      vim.ui.select(to_items, { prompt = "Diff TO (newer):", format_item = function(i) return i.label end }, function(to_choice)
+        _jj_in_root(gd_root, function()
+        if not to_choice then return end
+        local to = vim.trim(to_choice.rev)
+        if from == to then vim.notify("FROM == TO, empty diff", vim.log.levels.WARN) return end
+        _jj_in_root(gd_root, function()
+          require("lazy").load({ plugins = { "jj.nvim" } })
+          -- Same view as multi-select D in <leader>gl log: diffview in a new tab.
+          require("jj.diff").diff_revisions({ left = from, right = to })
+        end)
+        end)
+      end)
+    end)
+  end)
+end, { desc = "jj diff FROM..TO (pick both, diffview tab)" })
+
+-- GD: op log diff --from-op / --to-op with grouping and bookmark names
+map("n", "<leader>GD", function()
+  local gd2_root = _find_jj_root() or vim.fn.getcwd()
+  _with_jj_repo(function()
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    local runner = require("jj.core.runner")
+    local out = runner.execute_command("jj op log --no-graph -T 'id.short(8) ++ \"\\t\" ++ description.first_line() ++ \"\\n\"' 2>/dev/null", nil, nil, true) or ""
+    -- fallback to newer template: op log -T 'id ++ " " ++ description'
+    if vim.trim(out) == "" then out = runner.execute_command("jj op log 2>&1 | head -n 50", nil, nil, true) or "" end
+    local ops = {}
+    for _, line in ipairs(vim.split(out, "\n")) do
+      line = vim.trim(line)
+      if line ~= "" then
+        local id, desc = line:match("^([^\t]+)\t([^\t]*)")
+        if not id then id = line:match("^(%S+)"); desc = line:sub(#id+1) end
+        table.insert(ops, { id = id, label = id .. " " .. (desc or "") })
+      end
+    end
+    if #ops == 0 then vim.notify("No operations", vim.log.levels.WARN) return end
+    -- grouping: first 5 individually, then group by 2, then 3...
+    local grouped = {}
+    for i = 1, math.min(5, #ops) do table.insert(grouped, ops[i]) end
+    local idx = 6
+    local group_size = 2
+    while idx <= #ops do
+      local chunk = {}
+      for j = 0, group_size -1 do if ops[idx+j] then table.insert(chunk, ops[idx+j]) end end
+      if #chunk > 0 then
+        local label = "group " .. idx .. "-" .. (idx+#chunk-1) .. " (" .. chunk[1].id .. " .. " .. chunk[#chunk].id .. ")"
+        table.insert(grouped, { id = chunk[1].id, label = label, is_group = true })
+      end
+      idx = idx + group_size
+      group_size = group_size + 1
+      if group_size > 3 then group_size = 3 end
+    end
+    -- enrich with bookmark names from gkc (without number postfix) sorted by date: add bookmarks to labels
+    local bms = runner.execute_command("jj bookmark list -T 'name ++ \"\\n\"' 2>/dev/null", nil, nil, true) or ""
+    local bm_set = {}
+    for _, b in ipairs(vim.split(bms, "\n")) do b = vim.trim(b):gsub("%d+$",""); if b~="" then bm_set[b]=true end end
+    for _, g in ipairs(grouped) do
+      for bm,_ in pairs(bm_set) do if g.label:find(bm) then g.label = g.label .. " [" .. bm .. "]" end end
+    end
+    vim.ui.select(grouped, { prompt = "Diff --from-op (op log):", format_item = function(i) return i.label end }, function(choice)
+      _jj_in_root(gd2_root, function()
+      if not choice then return end
+      local from = vim.trim(choice.id)
+      _jj_in_root(gd2_root, function()
+        -- Resolve the working-copy commit at that op, then DiffView like <leader>gd.
+        -- `jj diff --from-op` is invalid; commit diff C1..C2 is the DiffViewable form.
+        local c1 = vim.trim(runner.execute_command("jj --at-operation " .. vim.fn.shellescape(from) .. " log --ignore-working-copy -r @ --no-graph -T 'commit_id.shortest(12)' 2>/dev/null", nil, nil, true) or "")
+        local c2 = vim.trim(runner.execute_command("jj log --ignore-working-copy -r @ --no-graph -T 'commit_id.shortest(12)' 2>/dev/null", nil, nil, true) or "")
+        if c1 == "" or c2 == "" then
+          vim.notify("Could not resolve commits for op diff", vim.log.levels.WARN)
+          return
+        end
+        if c1 == c2 then
+          -- Meta-only op (no commit changes): DiffView would be empty, show raw op diff in tab instead.
+          vim.cmd("tabnew")
+          vim.fn.termopen({ "jj", "op", "diff", "--from", from, "--to", "@" }, { cwd = gd2_root })
+          vim.cmd("startinsert")
+          pcall(vim.api.nvim_buf_set_name, 0, "jj-op-diff://" .. from)
+          return
+        end
+        require("lazy").load({ plugins = { "jj.nvim" } })
+        require("jj.diff").diff_revisions({ left = c1, right = c2 })
+      end)
+      end)
+    end)
+  end)
+end, { desc = "jj op diff --from (grouped) --to @ (diffview tab)" })
 {% endif %}

@@ -1,4 +1,4 @@
-{% if system_tools.jj %}
+{% if system_tools.jj or features.jj | default('false') == 'true' %}
 -- jj.nvim: neogit/stg-class UI for jujutsu. Uses diffview (already installed) as
 -- the diff backend and snacks.nvim for pickers. Lazy-loads on the :JJ command
 -- (alias for :J to avoid conflict with cmd_bookmarks' :J). Leader mappings live

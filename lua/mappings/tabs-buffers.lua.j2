@@ -22,8 +22,24 @@ local quicktabs = true
 if quicktabs then
   for i = 1, 9 do
     map("n", "<A-" .. i .. ">", i .. "gt", { desc = "Go to tab " .. i })
+    -- Alt+Shift+number: alternative that bypasses outer tmux-wm (which binds
+    -- plain Alt+number for pane/tab switching) so tab jumps work even inside
+    -- tmux-wm where Alt is captured. Both variants live side-by-side.
+    map("n", "<A-S-" .. i .. ">", i .. "gt", { desc = "Go to tab " .. i .. " (Alt+Shift)" })
+    map("n", "<M-S-" .. i .. ">", i .. "gt", { desc = "Go to tab " .. i .. " (Alt+Shift)" })
+  end
+  -- Alt+Shift symbols (what some terminals actually send for Alt+Shift+number,
+  -- e.g. Alt+Shift+1 -> Alt+! ). Cover both A and M variants.
+  local shift_symbols = { "!", "@", "#", "$", "%", "^", "&", "*", "(" }
+  for i, sym in ipairs(shift_symbols) do
+    map("n", "<A-" .. sym .. ">", i .. "gt", { desc = "Go to tab " .. i .. " (Alt+Shift symbol)" })
+    map("n", "<M-" .. sym .. ">", i .. "gt", { desc = "Go to tab " .. i .. " (Alt+Shift symbol)" })
   end
   map("n", "<A-g>", ":tabnew<CR>:Dashboard<CR>", { desc = "New tab + Dashboard" })
+  map("n", "<A-S-g>", ":tabnew<CR>:Dashboard<CR>", { desc = "New tab + Dashboard (Alt+Shift)" })
+  map("n", "<M-S-g>", ":tabnew<CR>:Dashboard<CR>", { desc = "New tab + Dashboard (Alt+Shift)" })
+  map("n", "<A-G>", ":tabnew<CR>:Dashboard<CR>", { desc = "New tab + Dashboard (Alt+Shift symbol)" })
+  map("n", "<M-G>", ":tabnew<CR>:Dashboard<CR>", { desc = "New tab + Dashboard (Alt+Shift symbol)" })
 
   -- Per-tab project cwd. Opening a project (dashboard, :cd, session restore)
   -- sets the GLOBAL cwd: without this, jumping tabs leaves every tab on the
