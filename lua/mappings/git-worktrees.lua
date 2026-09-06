@@ -66,7 +66,9 @@ local function jj_workspace_list_scoped(root)
           local ws_name = vim.fn.fnamemodify(abs, ":t")
           local in_scope = is_cur or name == "default"
           if scope_name and not in_scope then
-            in_scope = ws_name == scope_name or ws_name:find("-" .. scope_name, 1, true) ~= nil
+            in_scope = ws_name == scope_name
+              or ws_name:find(scope_name, 1, true) == 1
+              or ws_name:find("-" .. scope_name, 1, true) ~= nil
           end
           if in_scope then
             table.insert(list, {
