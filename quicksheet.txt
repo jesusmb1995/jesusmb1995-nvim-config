@@ -248,3 +248,57 @@ Paste selected/copied entry here | p
 Spawn a shell in current directory | !
 Select/run a plugin | ;
 Run dragdrop plugin (open floating file picker) | ;d
+## Agent skills
+Wrap up task (changes, files, caveats, stop) | /wrap-up
+### Session
+Fork convo to tmp md / restore it | /fork-md [name] / /fork-md-use <name>
+Compact convo / resume it | /comp-now / /comp-use
+Plan as bullets | /plan-points
+Short thinking between actions | /show_think
+Read-only answer, no edits / edit only, no shell | /ask / /edit
+Which skill fits this prompt | /recommend-skill
+### Explain
+Explain module why and how | /explain-code
+Plain step-by-step, no jargon | /explain-plainly / /explain-short-simple
+### Style
+Terse caveman mode | /caveman
+Laziest working solution | /ponytail
+De-AI text, sound human | /humanizer
+Caveman commit msgs / review comments / compress memory files / token stats / help / delegate guide | /caveman-commit / /caveman-review / /caveman-compress / /caveman-stats / /caveman-help / /cavecrew
+Ponytail review / whole-repo audit / debt ledger / impact board / help | /ponytail-review / /ponytail-audit / /ponytail-debt / /ponytail-gain / /ponytail-help
+### Patch and commit
+Per-patch changes | /per_patch
+Fixup as child patch, user squashes later | /per_patch_fixups
+Stage, commit / commit and push | /commit / /commit-push
+Stg top-patch msg / strip comments / whole-stack msgs | /stg-last-patch-description / /stg-last-patch-nonverbosecomments / /stg-series-descriptions
+Test-first, repro before fix | /tdd
+C++ style guide | /coding-preferences
+### Review
+Review bugs, safety, simplicity | /review-code
+PR comment correct? fix if needed | /review-comment-investigate
+Reply to review / post findings / append PR description | /comment-reply / /post-review-comment / /pr-add-to-description
+Open comments addressed in code? | /check-if-open-review-comments-addressed-in-code
+CI failures related or not, draft comment | /ci-failure-report
+Trigger upstream CI | /run-upstream-ci
+### Team
+Split task, parallel subagents | /team-basic
+Parallel investigation | /team-investigate
+Parallel review, vet findings | /team-review-code
+Merge conflicts plan | /team-solve-conflicts
+PR comments investigate / tdd-fix / tdd-fix direct | /team-pr-comments-investigate / /team-pr-comments-tdd-fix / /team-pr-comments-tdd-fix-direct
+Open comments addressed, per-comment agents | /team-check-if-open-review-comments-addressed-in-code
+Stg top-patch cleanup, parallel agents | /team-stg-last-patch-nonverbosecomments
+Daily progress report | /progress-report
+### jj workspaces
+Work in another workspace | /jjws
+Parallel agents, one workspace each | /jj-parallel-workspaces
+Forget stale agent workspaces | /jj-workspace-cleanup
+### Journal
+Read per-directory journal / write it | /journal-dir-read / /journal-dir-update
+### Tasks from file
+Run task from md, progress in same file | /do-task-from-md <path>
+### Command bookmarks
+Save last cmd / run saved cmd (deps with -d) | /cmdsave [name] / /cmdrun [name] [-d]
+### Infra
+Agent scratch files rule | /tmp-agent-skill
+Host and tool recipes catalog | /system_assets
