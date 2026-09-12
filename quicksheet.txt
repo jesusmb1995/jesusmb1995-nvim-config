@@ -175,8 +175,9 @@ jj duplicate stack → pair X1 (orig) + X2..N (dup, increasing) | <leader>gkc
 jj workspace list/select (jj when jj repo, else git) | <leader>gwg
 jj workspace add (prompt name + path) | <leader>gwa
 jj workspace forget | <leader>gwd
-jj diff FROM..TO (pick both, diffview tab) | <leader>Gd
-jj op diff --from-op (grouped, diffview tab) | <leader>GD
+jj evolog @ current patch only (pick version, diff vs current, diffview tab) | <leader>Gd
+jj diff FROM..TO arbitrary range (pick both, diffview tab) | <leader>GR
+jj op diff --from-op whole stack (grouped, diffview tab) | <leader>GD
 ## jj log panel (<leader>gl) — hover line + press:
 edit commit (enter) | <CR>
 edit immutable | <S-CR>
@@ -201,6 +202,7 @@ Stage all conflicts as resolved and refresh (alias) | stg-resolve
 ## gitsigns
 Stage hunk (custom mmap)| <leader>Hs
 ## Target runner
+re-run last command (savecmd-nvim LaunchLast) | <leader>rr
 run via .local_cmd_bookmarks (horizontal terminal) | <leader><A-h>
 run via .local_cmd_bookmarks (vertical terminal) | <leader><A-v>
 run via .local_cmd_bookmarks with dependencies [written as dep+name on the file] (horizontal terminal) | <leader><A-h> + <C-d>
