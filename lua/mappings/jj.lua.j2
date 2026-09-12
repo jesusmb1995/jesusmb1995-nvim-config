@@ -46,6 +46,26 @@ local function _jj_in_root(jj_root, fn)
   end
 end
 
+-- Tab-local cwd, explicit per-tab query: gwg opens one tab per jj workspace
+-- via tcd, so the TAB (not the buffer — tabnew keeps showing the old buffer)
+-- decides which workspace's @ the log panel shows. Bare getcwd() would follow
+-- a window-local lcd if one ever exists; getcwd(-1, tab) is the tab's own.
+local function _tab_cwd()
+  local ok, d = pcall(vim.fn.getcwd, -1, vim.fn.tabpagenr())
+  if ok and d ~= "" then return d end
+  return vim.fn.getcwd()
+end
+
+-- jj root of the current TAB's worktree (nil when the tab sits outside any
+-- jj repo). Preferred over the buffer-based _find_jj_root for workspace-wide
+-- views (log panel): the buffer may belong to another workspace's checkout.
+local function _find_jj_root_in_tab()
+  local dir = _tab_cwd()
+  local out = vim.fn.system({ "sh", "-c", "cd " .. vim.fn.shellescape(dir) .. " && jj root 2>/dev/null" })
+  if vim.v.shell_error == 0 and vim.trim(out) ~= "" then return vim.trim(out) end
+  return nil
+end
+
 local function _get_current_bookmark(runner)
   local out = runner.execute_command("jj log --ignore-working-copy -r '::@ & bookmarks()' --no-graph -T 'bookmarks.map(|b| b.name()).join(\"\\n\")' --limit 1 2>/dev/null", nil, nil, true)
   if not out then return nil end
@@ -63,8 +83,12 @@ map("n", "<leader>gg", "<cmd>JJ status<CR>", { desc = "jj status" })
 -- so pre-flight synchronously with silent=false (the runner then notifies
 -- stderr at ERROR level, which noice picks up) and only open the panel on
 -- success. Body in pcall so even loader failures notify instead of vanishing.
+-- Root is the TAB's worktree first (gwg tabs are workspaces; the visible
+-- buffer may still belong to another workspace), buffer-based root as fallback.
 map("n", "<leader>gl", function()
-  _with_jj_repo(function()
+  local root = _find_jj_root_in_tab() or _find_jj_root()
+  if not root then vim.notify("Not a jj repo", vim.log.levels.WARN) return end
+  _jj_in_root(root, function()
     local ok, err = pcall(function()
       require("lazy").load({ plugins = { "jj.nvim" } })
       local runner = require("jj.core.runner")
@@ -78,8 +102,9 @@ map("n", "<leader>gl", function()
   end)
 end, { desc = "jj log" })
 map("n", "<leader>gkg", function()
-  _with_jj_repo(function()
-  local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
+  local root = _find_jj_root_in_tab() or _find_jj_root()
+  if not root then vim.notify("Not a jj repo", vim.log.levels.WARN) return end
+  _jj_in_root(root, function()
     local ok, err = pcall(function()
       require("lazy").load({ plugins = { "jj.nvim" } })
       local runner = require("jj.core.runner")
@@ -405,7 +430,10 @@ map("n", "<leader>gB", "<cmd>JJ annotate<CR>", { desc = "jj annotate <file>" })
 map("n", "<leader>gp", "<cmd>JJ push<CR>", { desc = "jj git push [--bookmark <1>] [-r <remote>]" })
 map("n", "<leader>gf", "<cmd>JJ fetch<CR>", { desc = "jj git fetch [-r <remote>]" })
 map("n", "<leader>go", "<cmd>JJ open_pr<CR>", { desc = "jj log --ignore-working-copy -r @ -T bookmarks; open browser <url>" })
-map("n", "<leader>gw", "<cmd>JJbrowse<CR>", { desc = "jj: open file on remote in browser" })
+-- gO (not gw): bare <leader>gw would shadow the gw* worktree family
+-- (gwg/gwG/gwc/...) — typing gwX would hang on timeoutlen, and a pause after
+-- gw fires the browser instead of the worktree picker.
+map("n", "<leader>gO", "<cmd>JJbrowse<CR>", { desc = "jj: open file on remote in browser" })
 
 -- gF: move current buffer's file diff ( @ vs parent ) to another change — picker for destination
 map("n", "<leader>gF", function()

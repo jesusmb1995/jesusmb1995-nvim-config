@@ -92,9 +92,18 @@ local function warm_cmd(opts, dir)
     -- find first idle warm session (warm-*, warm-*@hash) with 0 clients
     .. "warm=$(env -u TMUX tmux list-sessions -F \"#{session_name} #{session_attached}\" 2>/dev/null | "
     .. "awk \"/^warm-/ && \\$2==0 {print \\$1; exit}\" || true); "
+    .. "stolen=\"\"; "
     .. "if [ -n \"$warm\" ]; then "
-    -- rename it to the requested nvim session name (ignore if race, target already exists)
-    .. "env -u TMUX tmux rename-session -t \"$warm\" \"$target\" 2>/dev/null || true; "
+    -- rename it to the requested nvim session name. Only when the rename wins
+    -- do we own the pane — and a stolen session is born in the daemon's /tmp
+    -- while `new-session -A -c` below only honours -c when CREATING, so
+    -- without this the reused terminal opens in /tmp (several exit/retry
+    -- rounds until a fresh session is born in the right dir). cd it home now
+    -- (+ clear, so the first open is a clean prompt, not warmup scrollback).
+    .. "if env -u TMUX tmux rename-session -t \"$warm\" \"$target\" 2>/dev/null; then "
+    .. "stolen=1; "
+    .. "env -u TMUX tmux send-keys -t \"$target\" \"cd \\\"$dir\\\"; clear\" Enter 2>/dev/null || true; "
+    .. "fi; "
     .. "fi; "
     .. "exec env -u TMUX tmux new-session -A -s \"$target\" -c \"$dir\"; "
     .. "'"

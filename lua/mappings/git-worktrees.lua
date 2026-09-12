@@ -1,34 +1,52 @@
 local map = vim.keymap.set
 
--- jj root for the CURRENT BUFFER's repo (not global cwd: async select/input
--- callbacks fire after cwd may have moved, and global cwd may never have been
--- the repo — same "not a repo" class of bug as jj.lua mappings).
-local function gw_jj_root()
-  local buf_dir = vim.fn.expand("%:p:h")
-  if buf_dir ~= "" then
-    local out = vim.fn.system({ "sh", "-c", "cd " .. vim.fn.shellescape(buf_dir) .. " && jj root 2>/dev/null" })
-    if vim.v.shell_error == 0 and vim.trim(out) ~= "" then return vim.trim(out) end
-  end
+-- Tab-local cwd, explicit per-tab query: gwg opens one tab per jj workspace via
+-- tcd, so the TAB (not the buffer — tabnew keeps showing the old buffer) is
+-- the worktree the workspace list, the `*` marker and @ resolution follow.
+local function tab_cwd()
+  local ok, d = pcall(vim.fn.getcwd, -1, vim.fn.tabpagenr())
+  if ok and d ~= "" then return d end
   return vim.fn.getcwd()
 end
 
+-- jj root containing dir (nil when dir sits outside any jj repo).
+local function jj_root_of(dir)
+  if dir == nil or dir == "" then return nil end
+  local out = vim.fn.system({ "sh", "-c", "cd " .. vim.fn.shellescape(dir) .. " && jj root 2>/dev/null" })
+  if vim.v.shell_error == 0 and vim.trim(out) ~= "" then return vim.trim(out) end
+  return nil
+end
+
+-- jj root for workspace actions: current TAB's worktree first (gwg tabs are
+-- workspaces), current buffer's repo second, global cwd last.
+local function gw_jj_root()
+  return jj_root_of(tab_cwd())
+    or jj_root_of(vim.fn.expand("%:p:h"))
+    or vim.fn.getcwd()
+end
+
 local function is_jj_repo()
-  local buf_dir = vim.fn.expand("%:p:h")
-  if buf_dir ~= "" then
-    local out = vim.fn.system({ "sh", "-c", "cd " .. vim.fn.shellescape(buf_dir) .. " && jj root 2>/dev/null" })
-    if vim.v.shell_error == 0 and vim.trim(out) ~= "" then return true end
-  end
+  if jj_root_of(tab_cwd()) then return true end
+  if jj_root_of(vim.fn.expand("%:p:h")) then return true end
   local out2 = vim.fn.system({ "sh", "-c", "jj root 2>/dev/null" })
   return vim.v.shell_error == 0 and vim.trim(out2) ~= ""
 end
 
 -- Pin cwd to root for fn, then restore. Wrap every vim.ui callback body in jj
 -- branches: pickers return after cwd moved on.
+-- IMPORTANT: only restore when we are still in the SAME tab. gwg does
+-- `tabnew` inside fn, so by the time we restore we are in the NEW tab — and
+-- :cd/:chdir clears the tab-local cwd, wiping the `:tcd <workspace>` that
+-- fn just set. That is why workspace switches flipped back to the old
+-- workspace. When fn moved us to a new tab, skip the restore entirely.
 local function gw_in_root(root, fn)
   local prev = vim.fn.getcwd()
+  local start_tab = vim.fn.tabpagenr()
   vim.fn.chdir(root)
   local ok, err = pcall(fn)
-  vim.fn.chdir(prev)
+  if vim.fn.tabpagenr() == start_tab then
+    vim.fn.chdir(prev)
+  end
   if not ok then vim.notify("workspace action failed: " .. tostring(err), vim.log.levels.ERROR) end
 end
 
@@ -42,7 +60,9 @@ end
 -- path/name relates to the current buffer's directory, so users don't see every
 -- workspace in the repo. Status lines without "name:" are skipped.
 local function jj_workspace_list_scoped(root)
-  local tab_cwd = vim.fn.getcwd()
+  -- Star basis is the TAB's worktree (explicit per-tab query, not the buffer:
+  -- after gwg the new tab still shows the old workspace's buffer).
+  local tab_dir = tab_cwd()
   local jj_root = root or gw_jj_root()
   local prev = vim.fn.getcwd()
   vim.fn.chdir(jj_root)
@@ -51,8 +71,8 @@ local function jj_workspace_list_scoped(root)
   vim.fn.chdir(prev)
   if not ok then return {}, jj_root end
   local list = {}
-  local cur_norm = norm_dir(tab_cwd)
-  local scope_name = vim.fn.fnamemodify(tab_cwd, ":t")
+  local cur_norm = norm_dir(tab_dir)
+  local scope_name = vim.fn.fnamemodify(tab_dir, ":t")
   if scope_name == "" or scope_name == "." then scope_name = nil end
   for _, line in ipairs(vim.split(vim.trim(out), "\n")) do
     line = vim.trim(line)
