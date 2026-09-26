@@ -432,11 +432,7 @@ vim.api.nvim_create_autocmd("TermOpen", {
       nowait = true,
       desc = "Open terminal file reference in new tab",
     })
-    vim.keymap.set("t", " ", " ", {
-      buffer = buf,
-      nowait = true,
-      desc = "Bypass leader timeout so space is sent immediately",
-    })
+
     -- Warm tmux terminals only: nvchad stores the termopen cmd on the buffer
     -- entry BEFORE termopen runs, so the `-s nvim-<id>-<dir>` session is
     -- parseable here.
@@ -447,60 +443,54 @@ vim.api.nvim_create_autocmd("TermOpen", {
     if sess and sess:match("^nvim%-") then
       vim.b[buf].warm_tmux_session = sess
     end
-    -- Plain C-l is ALWAYS "go right" in terminal buffers (except the agent
-    -- term itself, where the global t <C-l> closes it): t exits to normal
-    -- and moves right, n moves right, x is a noop. The agent hint lives ONLY
-    -- on Ctrl+Shift+l (C-S-l / C-L) of warm tmux terminals below — plain C-l
-    -- must never send anything to the agent (doc/g_round_improvements_16.md).
-    if not is_agent then
-      vim.keymap.set("t", "<C-l>", function()
-        vim.cmd("stopinsert")
-        vim.cmd("wincmd l")
-      end, {
-        buffer = buf,
-        silent = true,
-        nowait = true,
-        desc = "Normal navigation right (C-x then l equivalent)",
-      })
-      vim.keymap.set("n", "<C-l>", function()
-        vim.cmd("wincmd l")
-      end, {
-        buffer = buf,
-        silent = true,
-        nowait = true,
-        desc = "Normal navigation right (C-x then l)",
-      })
+    -- Space bypass only in terminal-insert mode so <leader>l works in
+    -- terminal-normal/visual mode. mode() returns 't' in insert, 'nt' in normal.
+    local space_bypass
+    space_bypass = function()
+      if vim.bo[buf].buftype ~= "terminal" then
+        return
+      end
+      local mode = vim.api.nvim_get_mode().mode
+      if mode == "t" then
+        vim.keymap.set("t", " ", " ", { buffer = buf, nowait = true })
+      else
+        vim.keymap.del("t", " ", { buffer = buf })
+      end
     end
+    vim.api.nvim_create_autocmd("ModeChanged", {
+      buffer = buf,
+      callback = space_bypass,
+    })
+    vim.api.nvim_create_autocmd("TermEnter", {
+      buffer = buf,
+      callback = space_bypass,
+    })
+    vim.keymap.set("n", "<C-l>", function()
+      vim.cmd("wincmd l")
+    end, {
+      buffer = buf,
+      silent = true,
+      nowait = true,
+      desc = "Normal navigation right (C-x then l)",
+    })
     vim.keymap.set("x", "<C-l>", "<Nop>", {
       buffer = buf,
       silent = true,
       nowait = true,
       desc = "Noop in terminal visual (use Ctrl+Shift+l for hint)",
     })
-    -- Use Ctrl+Shift+l (<C-S-l>) on tmux terminals to avoid clashing with
-    -- Ctrl+x then l (e.g. window navigation that includes l) and plain C-l.
-    -- NOTE: In Vim/Neovim, <C-L> is normalized to <C-l> (plain Ctrl+l);
-    -- Ctrl+Shift+L MUST be mapped as <C-S-l>, never <C-L>.
-    if sess and sess:match("^nvim%-") then
-      vim.keymap.set("t", "<C-S-l>", function() send_warm_hint("t") end, {
-        buffer = buf,
-        silent = true,
-        nowait = true,
-        desc = "Send tmux session hint to agent terminal (Ctrl+Shift+l)",
-      })
-      vim.keymap.set("n", "<C-S-l>", function() send_warm_hint("n") end, {
-        buffer = buf,
-        silent = true,
-        nowait = true,
-        desc = "Send tmux session + cursor line hint to agent terminal (Ctrl+Shift+l)",
-      })
-      vim.keymap.set("x", "<C-S-l>", function() send_warm_hint("x") end, {
-        buffer = buf,
-        silent = true,
-        nowait = true,
-        desc = "Send tmux session + selection hint to agent terminal (Ctrl+Shift+l)",
-      })
-    end
+    vim.keymap.set("n", "<leader>l", function() send_warm_hint("n") end, {
+      buffer = buf,
+      silent = true,
+      nowait = true,
+      desc = "Send tmux session + cursor line hint to agent terminal (leader+l)",
+    })
+    vim.keymap.set("x", "<leader>l", function() send_warm_hint("x") end, {
+      buffer = buf,
+      silent = true,
+      nowait = true,
+      desc = "Send tmux session + selection hint to agent terminal (leader+l)",
+    })
   end,
 })
 -- Neither when toggle hide. Force reapply option.
