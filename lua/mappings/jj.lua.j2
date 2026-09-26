@@ -76,6 +76,52 @@ local function _get_current_bookmark(runner)
   return nil
 end
 
+-- Squash message: "Includes squashed:" summary above bottom TAG lines.
+-- First line of each squashed desc, truncated to limit + "..." when cut or
+-- when the desc spans multiple lines.
+local function _squash_first_line(desc, limit)
+  local lines = vim.split(desc or "", "\n")
+  local first = vim.trim(lines[1] or "")
+  local multiline = false
+  for i = 2, #lines do
+    if vim.trim(lines[i]) ~= "" then multiline = true break end
+  end
+  if #first > limit then return first:sub(1, limit) .. "..." end
+  if multiline then return first .. "..." end
+  return first
+end
+
+-- Split trailing TAG lines (TAG=1, Tag: x, ...) off a description so the
+-- Includes block lands BEFORE them and tags stay at the very bottom.
+local function _split_desc_trailers(desc)
+  local lines = vim.split(desc or "", "\n")
+  while #lines > 0 and vim.trim(lines[#lines]) == "" do table.remove(lines) end
+  local trailers = {}
+  while #lines > 0 and lines[#lines]:match("^[A-Za-z][%w%-]*%s*[:=]") do
+    table.insert(trailers, 1, table.remove(lines))
+  end
+  return table.concat(lines, "\n"), trailers
+end
+
+local function _squash_message(dest_desc, src_descs)
+  local body, trailers = _split_desc_trailers(dest_desc)
+  local parts = {}
+  if body ~= "" then table.insert(parts, body) table.insert(parts, "") end
+  table.insert(parts, "Includes squashed:")
+  for _, d in ipairs(src_descs) do
+    table.insert(parts, "- " .. _squash_first_line(d, 60))
+  end
+  for _, t in ipairs(trailers) do table.insert(parts, t) end
+  return table.concat(parts, "\n")
+end
+
+local function _jj_capture(runner, revset, template)
+  local out = runner.execute_command(
+    "jj log --ignore-working-copy -r " .. vim.fn.shellescape(revset) .. " --no-graph -T " .. vim.fn.shellescape(template) .. " 2>/dev/null",
+    nil, nil, true)
+  return vim.trim(out or "")
+end
+
 --              key        command / pipeline                        desc
 map("n", "<leader>gg", "<cmd>JJ status<CR>", { desc = "jj status" })
 -- gl/gkg: open the jj.nvim log panel. The panel backend (terminal.run) never
@@ -97,26 +143,70 @@ map("n", "<leader>gl", function()
         "jj log", nil, false)
       if not success then return end
       require("jj.cmd").log({})
+      vim.schedule(function() _jj_log_panel_setup() end)
     end)
     if not ok then vim.notify("JJ log failed: " .. tostring(err), vim.log.levels.ERROR, { title = "JJ" }) end
   end)
 end, { desc = "jj log" })
 map("n", "<leader>gkg", function()
-  local root = _find_jj_root_in_tab() or _find_jj_root()
-  if not root then vim.notify("Not a jj repo", vim.log.levels.WARN) return end
-  _jj_in_root(root, function()
-    local ok, err = pcall(function()
-      require("lazy").load({ plugins = { "jj.nvim" } })
-      local runner = require("jj.core.runner")
-      local _, success = runner.execute_command(
-        "jj log --ignore-working-copy --no-graph --limit 1 -r 'mutable()' -T 'commit_id.shortest(8)'",
-        "jj log -r mutable()", nil, false)
-      if not success then return end
-      require("jj.cmd").log({ revisions = "mutable()" })
-    end)
-    if not ok then vim.notify("JJ log failed: " .. tostring(err), vim.log.levels.ERROR, { title = "JJ" }) end
+  _with_jj_repo(function()
+  local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    local runner = require("jj.core.runner")
+    local out = runner.execute_command("jj log --ignore-working-copy -r 'mutable()' --no-graph -T 'change_id.shortest(8) ++ \"\\t\" ++ if(bookmarks, bookmarks.map(|b| b.name()).join(\",\"), \"\") ++ \"\\t\" ++ description.first_line()' 2>/dev/null", nil, nil, true) or ""
+    local items = {}
+    for _, line in ipairs(vim.split(out, "\n")) do
+      line = vim.trim(line)
+      if line ~= "" then
+        local parts = vim.split(line, "\t", { plain = true })
+        local change = vim.trim(parts[1] or "")
+        if change ~= "" then
+          local bms = vim.trim(parts[2] or "")
+          local desc = vim.trim(parts[3] or "")
+          local label = change .. (bms ~= "" and (" [" .. bms .. "]") or "") .. (desc ~= "" and (" " .. desc) or "")
+          table.insert(items, { rev = change, label = label })
+        end
+      end
+    end
+    if #items == 0 then vim.notify("No mutable revisions", vim.log.levels.WARN) return end
+    local function do_edit(choice)
+      if not choice then return end
+      _jj_in_root(jj_root_cap, function()
+        local r2 = require("jj.core.runner")
+        r2.execute_command_async("jj edit --ignore-working-copy " .. vim.fn.shellescape(choice.rev), function()
+          _jj_in_root(jj_root_cap, function()
+            require("jj.utils").notify("Editing " .. choice.rev, vim.log.levels.INFO)
+            if require("jj.ui.terminal").is_log_buffer_open() then require("jj.cmd").log({}) end
+          end)
+        end, "Error editing " .. choice.rev)
+      end)
+    end
+    if pcall(require, "telescope") then
+      local theme_ok, theme = pcall(function() return require("telescope.themes").get_dropdown({}) end)
+      require("telescope.pickers").new(theme_ok and theme or {}, {
+        prompt_title = "jj mutable() → edit",
+        finder = require("telescope.finders").new_table({
+          results = items,
+          entry_maker = function(e) return { value = e, display = e.label, ordinal = e.label } end,
+        }),
+        sorter = require("telescope.sorters").get_generic_fuzzy_sorter(),
+        attach_mappings = function(prompt_bufnr, _)
+          local actions = require("telescope.actions")
+          local state = require("telescope.actions.state")
+          actions.select_default:replace(function()
+            local sel = state.get_selected_entry()
+            actions.close(prompt_bufnr)
+            if sel then do_edit(sel.value) end
+          end)
+          return true
+        end,
+      }):find()
+    else
+      vim.ui.select(items, { prompt = "Edit revision:", format_item = function(i) return i.label end },
+        function(choice) do_edit(choice) end)
+    end
   end)
-end, { desc = "jj log -r mutable()" })
+end, { desc = "jj mutable() telescope dropdown → jj edit <pick>" })
 map("n", "<leader>gd", "<cmd>JJdiff<CR>", { desc = "jj diff" })
 map("n", "<leader>gD", "<cmd>JJhdiff<CR>", { desc = "jj diff (horizontal)" })
 map("n", "<leader>gn", "<cmd>JJ new<CR>", { desc = "jj new [<parent>]" })
@@ -148,42 +238,84 @@ map("n", "<leader>gN", function()
 end, { desc = "jj bookmark create <name> -r @" })
 map("n", "<leader>gc", "<cmd>JJ commit<CR>", { desc = "jj commit \"<description>\"" })
 map("n", "<leader>ge", "<cmd>JJ describe<CR>", { desc = "jj describe [<change>]" })
+-- Log-panel setup: key legend on top (winbar — never touches buffer lines,
+-- the plugin parses cursor lines for revsets) + our <S-s> quick-squash that
+-- keeps an "Includes squashed:" summary (upstream -u drops the message).
+local _jj_log_legend = "s squash | S-s quick-squash(keep msg) | d describe | D diff | e edit | n new | r rebase | a abandon | b/B bookmark | p push | f fetch | o PR | u undo | g? help"
+
+local function _jj_log_quick_squash_keep_msg(jj_root_cap)
+  local ok_parser, parser = pcall(require, "jj.core.parser")
+  if not ok_parser or not parser.get_revset then
+    vim.notify("jj parser unavailable", vim.log.levels.ERROR)
+    return
+  end
+  local rev = parser.get_revset(vim.api.nvim_get_current_line())
+  if not rev or vim.trim(rev) == "" then
+    vim.notify("No revision under cursor", vim.log.levels.WARN)
+    return
+  end
+  rev = vim.trim(rev)
+  local runner = require("jj.core.runner")
+  local parents = _jj_capture(runner, "parents(" .. rev .. ")", "change_id.shortest(8) ++ '\\n'")
+  local plist = {}
+  for _, l in ipairs(vim.split(parents, "\n")) do
+    l = vim.trim(l)
+    if l ~= "" then table.insert(plist, l) end
+  end
+  if #plist ~= 1 then
+    vim.notify("Quick squash needs a single parent, got " .. #plist, vim.log.levels.WARN)
+    return
+  end
+  local parent = plist[1]
+  local src_desc = _jj_capture(runner, rev, "description")
+  local dest_desc = _jj_capture(runner, parent, "description")
+  local msg = _squash_message(dest_desc, { src_desc })
+  runner.execute_command_async(
+    "jj squash --ignore-working-copy --from " .. vim.fn.shellescape(rev) .. " --into " .. vim.fn.shellescape(parent) .. " -m " .. vim.fn.shellescape(msg),
+    function()
+      _jj_in_root(jj_root_cap, function()
+        require("jj.utils").notify("Squashed " .. rev .. " into " .. parent .. " (message kept)", vim.log.levels.INFO)
+        require("jj.cmd").log({})
+        vim.schedule(function() _jj_log_panel_setup() end)
+      end)
+    end, "Error squashing " .. rev)
+end
+
+function _jj_log_panel_setup(buf)
+  buf = buf or vim.api.nvim_get_current_buf()
+  local ok_term, terminal = pcall(require, "jj.ui.terminal")
+  if not (ok_term and terminal and terminal.state and terminal.state.buf == buf) then return end
+  local win = vim.fn.bufwinid(buf)
+  if win ~= -1 then vim.wo[win].winbar = " JJ " .. _jj_log_legend end
+  vim.keymap.set("n", "<S-s>", function()
+    local root = _find_jj_root_in_tab() or _find_jj_root()
+    if not root then vim.notify("Not a jj repo", vim.log.levels.WARN) return end
+    _jj_in_root(root, function() _jj_log_quick_squash_keep_msg(root) end)
+  end, { buffer = buf, silent = true, nowait = true, desc = "Quick squash into parent (keeps Includes squashed: msg)" })
+end
+
 map("n", "<leader>grs", function()
   _with_jj_repo(function()
   local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
     require("lazy").load({ plugins = { "jj.nvim" } })
-    local ok_term, terminal = pcall(require, "jj.ui.terminal")
-    if ok_term and terminal and terminal.run_floating then
-      -- Use floating with interactive so :w/:q go to the inner nvim editor (ui.editor=nvim), not host.
-      -- jj squash may open $EDITOR (nvim) for the squash message; interactive ensures the terminal job handles it.
-      local ok, err = pcall(terminal.run_floating, { "jj", "squash" }, nil, {
-        interactive = true,
-        title = " JJ squash (:w → inner nvim) ",
-        on_exit = function(code)
-          _jj_in_root(jj_root_cap, function()
-          if code == 0 then
-            vim.notify("Squashed (via nvim editor)", vim.log.levels.INFO)
-            if terminal.is_log_buffer_open and terminal.is_log_buffer_open() then require("jj.cmd").log({}) end
-          else
-            vim.notify("Squash exit " .. tostring(code) .. " — check :NoiceAll, try :w then :q in inner nvim", vim.log.levels.WARN)
-          end
-          end)
-        end,
-      })
-      if not ok then
-        vim.notify("Floating squash failed: " .. tostring(err) .. " — falling back to :JJ squash", vim.log.levels.WARN)
-        pcall(vim.cmd, "JJ squash")
-      else
-        vim.notify("JJ squash floating opened — :w writes inner nvim, :q closes editor", vim.log.levels.INFO)
-        return
-      end
+    local runner = require("jj.core.runner")
+    local diff_stat = vim.trim(runner.execute_command("jj diff --ignore-working-copy --stat -r @ 2>/dev/null", nil, nil, true) or "")
+    if diff_stat == "" then
+      vim.notify("Nothing to squash (@ is empty)", vim.log.levels.WARN)
+      return
     end
-    -- Fallback: plain JJ squash (host nvim will handle editor, but :w may go to host)
-    local ok, err = pcall(vim.cmd, "JJ squash")
-    if not ok then vim.notify("JJ squash failed: " .. tostring(err), vim.log.levels.ERROR)
-    else vim.notify("JJ squash executed (check :NoiceAll)", vim.log.levels.INFO) end
+    local parent_desc = _jj_capture(runner, "@-", "description")
+    local at_desc = _jj_capture(runner, "@", "description")
+    local msg = _squash_message(parent_desc, { at_desc })
+    local cmd = "jj squash --ignore-working-copy --from @ --into @- -m " .. vim.fn.shellescape(msg)
+    _jj_in_root(jj_root_cap, function()
+      -- Horizontal split, same place as <C-g>: visible but out of the way,
+      -- keep working elsewhere while it runs.
+      require("nvchad.term").runner({ pos = "sp", cmd = cmd, id = "jjSquashTerm", clear_cmd = false })
+      vim.notify("Squashing @ into parent (horizontal term) — output lands there", vim.log.levels.INFO)
+    end)
   end)
-end, { desc = "jj squash (floating nvim, :w → inner)" })
+end, { desc = "jj squash @ into parent (horizontal term, keeps Includes squashed: msg)" })
 map("n", "<leader>grd", "<cmd>JJ rebase<CR>", { desc = "jj rebase -d <destination>" })
 map("n", "<leader>gS", "<cmd>JJ split<CR>", { desc = "jj split [<change>]" })
 map("n", "<leader>gR", "<cmd>JJ resolve<CR>", { desc = "jj resolve [<files>...]" })
@@ -770,6 +902,55 @@ map("n", "<leader>gwd", function()
     end)
   end)
 end, { desc = "jj workspace forget" })
+
+-- gW / :JJworkspacesToBase: move every workspace whose @ is EMPTY (no changes,
+-- no description) to its fork base — latest valid patch of the stack.
+-- a-b-c-{d,e} empties move to c; linear a-b-c-d-e stays (nothing diverges).
+local function _jj_workspaces_to_base()
+  local root = _find_jj_root_in_tab() or _find_jj_root()
+  if not root then vim.notify("Not a jj repo", vim.log.levels.WARN) return end
+  require("lazy").load({ plugins = { "jj.nvim" } })
+  local runner = require("jj.core.runner")
+  local function at(path, args)
+    return vim.trim(runner.execute_command("jj --ignore-working-copy -R " .. vim.fn.shellescape(path) .. " " .. args .. " 2>/dev/null", nil, nil, true) or "")
+  end
+  local ws = _jj_workspace_list()
+  if #ws == 0 then vim.notify("No jj workspaces", vim.log.levels.WARN) return end
+  local moved, left = {}, {}
+  for _, w in ipairs(ws) do
+    local at_id = at(w.path, "log -r @ --no-graph -T 'change_id.shortest(8)'")
+    local diff = at(w.path, "diff --stat -r @")
+    local desc = at(w.path, "log -r @ --no-graph -T 'description'")
+    if diff ~= "" or desc ~= "" then
+      table.insert(left, w.name .. " (not empty)")
+    else
+      local kids = {}
+      for _, l in ipairs(vim.split(at(w.path, "log -r 'heads(descendants(parents(@)))' --no-graph -T 'change_id.shortest(8) ++ \"\\n\"'"), "\n")) do
+        l = vim.trim(l)
+        if l ~= "" then table.insert(kids, l) end
+      end
+      if #kids <= 1 then
+        table.insert(left, w.name .. " (linear, fine)")
+      else
+        local base = vim.trim(at(w.path, "fork-base"):match("^(%S+)") or "")
+        if base == "" or base == at_id then
+          table.insert(left, w.name .. " (no base found)")
+        else
+          local ok = vim.trim(runner.execute_command("jj --ignore-working-copy -R " .. vim.fn.shellescape(w.path) .. " edit -r " .. vim.fn.shellescape(base) .. " 2>&1", nil, nil, true) or "")
+          table.insert(moved, w.name .. " → " .. base .. (ok ~= "" and (" (" .. ok .. ")") or ""))
+        end
+      end
+    end
+  end
+  local msg = "workspaces to base: " .. #moved .. " moved"
+  if #moved > 0 then msg = msg .. " (" .. table.concat(moved, ", ") .. ")" end
+  vim.notify(msg, #moved > 0 and vim.log.levels.INFO or vim.log.levels.WARN)
+end
+
+map("n", "<leader>gW", function()
+  _with_jj_repo(function() _jj_workspaces_to_base() end)
+end, { desc = "jj: move empty workspace @s to fork base" })
+vim.api.nvim_create_user_command("JJworkspacesToBase", function() _jj_workspaces_to_base() end, { desc = "Move empty workspace @s to fork base" })
 
 -- Gd: evolog of CURRENT patch only (@ and its predecessors) → pick one older
 -- version → diff picked..@ in diffview tab. Single-patch evolution, unlike GD

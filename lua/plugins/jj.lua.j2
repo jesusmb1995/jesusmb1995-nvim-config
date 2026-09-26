@@ -21,6 +21,12 @@ return {
             keymaps = { close = { "q", "<Esc>", "<C-c>" } },
           },
         },
+        -- Upstream quick-squash passes -u (keeps parent message, DROPS the
+        -- squashed message). Disabled here: our log-panel <S-s> override
+        -- (mappings/jj.lua) squashes with an "Includes squashed:" summary.
+        keymaps = {
+          log = { quick_squash = false },
+        },
       },
     })
 
