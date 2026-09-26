@@ -105,14 +105,30 @@ end
 
 local function _squash_message(dest_desc, src_descs)
   local body, trailers = _split_desc_trailers(dest_desc)
-  local parts = {}
-  if body ~= "" then table.insert(parts, body) table.insert(parts, "") end
-  table.insert(parts, "Includes squashed:")
+  local items = {}
   for _, d in ipairs(src_descs) do
-    table.insert(parts, "- " .. _squash_first_line(d, 60))
+    table.insert(items, "- " .. _squash_first_line(d, 60))
   end
-  for _, t in ipairs(trailers) do table.insert(parts, t) end
-  return table.concat(parts, "\n")
+  -- Header appears only once: if dest already has one, append under it.
+  local lines = vim.split(body, "\n")
+  local hi = nil
+  for i, l in ipairs(lines) do
+    if vim.trim(l) == "Includes squashed:" then hi = i break end
+  end
+  if hi then
+    local pos = hi
+    while pos + 1 <= #lines and lines[pos + 1]:match("^%s*%- ") do pos = pos + 1 end
+    for i = #items, 1, -1 do table.insert(lines, pos + 1, items[i]) end
+    body = table.concat(lines, "\n")
+  else
+    local parts = {}
+    if body ~= "" then table.insert(parts, body) table.insert(parts, "") end
+    table.insert(parts, "Includes squashed:")
+    for _, it in ipairs(items) do table.insert(parts, it) end
+    body = table.concat(parts, "\n")
+  end
+  if #trailers > 0 then body = body .. "\n" .. table.concat(trailers, "\n") end
+  return body
 end
 
 local function _jj_capture(runner, revset, template)
@@ -120,6 +136,33 @@ local function _jj_capture(runner, revset, template)
     "jj log --ignore-working-copy -r " .. vim.fn.shellescape(revset) .. " --no-graph -T " .. vim.fn.shellescape(template) .. " 2>/dev/null",
     nil, nil, true)
   return vim.trim(out or "")
+end
+
+-- Revision under cursor, walking up a few lines: the cursor often sits on a
+-- description continuation line, whose parse returns nil.
+local function _jj_revset_under_cursor()
+  local ok_parser, parser = pcall(require, "jj.core.parser")
+  if not ok_parser or not parser.get_revset then return nil end
+  local buf = vim.api.nvim_get_current_buf()
+  local row = vim.api.nvim_win_get_cursor(0)[1]
+  for i = row, math.max(1, row - 6), -1 do
+    local line = vim.api.nvim_buf_get_lines(buf, i - 1, i, false)[1] or ""
+    local rev = parser.get_revset(line)
+    if rev and vim.trim(rev) ~= "" then return vim.trim(rev) end
+  end
+  return nil
+end
+
+-- Open the describe editor on rev so the (prebuilt) message can be edited.
+-- Quitting without saving keeps the prebuilt message: safe default.
+local function _jj_edit_desc_later(rev)
+  vim.schedule(function()
+    local ok, err = pcall(require("jj.cmd").describe, nil, rev, nil, function()
+      if require("jj.ui.terminal").is_log_buffer_open() then require("jj.cmd").log({}) end
+      _jj_log_panel_setup()
+    end)
+    if not ok then vim.notify("Describe editor failed: " .. tostring(err), vim.log.levels.WARN) end
+  end)
 end
 
 --              key        command / pipeline                        desc
@@ -143,7 +186,7 @@ map("n", "<leader>gl", function()
         "jj log", nil, false)
       if not success then return end
       require("jj.cmd").log({})
-      vim.schedule(function() _jj_log_panel_setup() end)
+      _jj_log_panel_setup(nil, true)
     end)
     if not ok then vim.notify("JJ log failed: " .. tostring(err), vim.log.levels.ERROR, { title = "JJ" }) end
   end)
@@ -153,7 +196,7 @@ map("n", "<leader>gkg", function()
   local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
     require("lazy").load({ plugins = { "jj.nvim" } })
     local runner = require("jj.core.runner")
-    local out = runner.execute_command("jj log --ignore-working-copy -r 'mutable()' --no-graph -T 'change_id.shortest(8) ++ \"\\t\" ++ if(bookmarks, bookmarks.map(|b| b.name()).join(\",\"), \"\") ++ \"\\t\" ++ description.first_line()' 2>/dev/null", nil, nil, true) or ""
+    local out = runner.execute_command("jj log --ignore-working-copy -r 'mutable()' --no-graph -T 'change_id.shortest(8) ++ \"\\t\" ++ if(bookmarks, bookmarks.map(|b| b.name()).join(\",\"), \"\") ++ \"\\t\" ++ description.first_line() ++ \"\\n\"' 2>/dev/null", nil, nil, true) or ""
     local items = {}
     for _, line in ipairs(vim.split(out, "\n")) do
       line = vim.trim(line)
@@ -163,7 +206,9 @@ map("n", "<leader>gkg", function()
         if change ~= "" then
           local bms = vim.trim(parts[2] or "")
           local desc = vim.trim(parts[3] or "")
-          local label = change .. (bms ~= "" and (" [" .. bms .. "]") or "") .. (desc ~= "" and (" " .. desc) or "")
+          if desc == "" then desc = "(no description)" end
+          if #desc > 80 then desc = desc:sub(1, 80) .. "..." end
+          local label = change .. (bms ~= "" and (" [" .. bms .. "]") or "") .. " " .. desc
           table.insert(items, { rev = change, label = label })
         end
       end
@@ -241,20 +286,14 @@ map("n", "<leader>ge", "<cmd>JJ describe<CR>", { desc = "jj describe [<change>]"
 -- Log-panel setup: key legend on top (winbar — never touches buffer lines,
 -- the plugin parses cursor lines for revsets) + our <S-s> quick-squash that
 -- keeps an "Includes squashed:" summary (upstream -u drops the message).
-local _jj_log_legend = "s squash | S-s quick-squash(keep msg) | d describe | D diff | e edit | m new | r rebase | a abandon | b/B bookmark | p push | f fetch | o PR | u undo | g? help"
+local _jj_log_legend = "s squash | S-s quick-squash | C-y dup(o=onto,a=after,b=before) | d describe | D diff | e edit | m new | r rebase | a abandon | b bookmark | u undo | g? help"
 
 local function _jj_log_quick_squash_keep_msg(jj_root_cap)
-  local ok_parser, parser = pcall(require, "jj.core.parser")
-  if not ok_parser or not parser.get_revset then
-    vim.notify("jj parser unavailable", vim.log.levels.ERROR)
-    return
-  end
-  local rev = parser.get_revset(vim.api.nvim_get_current_line())
-  if not rev or vim.trim(rev) == "" then
+  local rev = _jj_revset_under_cursor()
+  if not rev then
     vim.notify("No revision under cursor", vim.log.levels.WARN)
     return
   end
-  rev = vim.trim(rev)
   local runner = require("jj.core.runner")
   local parents = _jj_capture(runner, "parents(" .. rev .. ")", "change_id.shortest(8) ++ '\\n'")
   local plist = {}
@@ -276,25 +315,184 @@ local function _jj_log_quick_squash_keep_msg(jj_root_cap)
       _jj_in_root(jj_root_cap, function()
         require("jj.utils").notify("Squashed " .. rev .. " into " .. parent .. " (message kept)", vim.log.levels.INFO)
         require("jj.cmd").log({})
-        vim.schedule(function() _jj_log_panel_setup() end)
+        _jj_log_panel_setup()
+        _jj_edit_desc_later(parent)
       end)
     end, "Error squashing " .. rev)
 end
 
-function _jj_log_panel_setup(buf)
-  buf = buf or vim.api.nvim_get_current_buf()
+-- s-mode execute (our <CR> override): same message keeping as S-s, for the
+-- sources picked with s + destination under cursor. Then editor on dest.
+local function _jj_log_squash_mode_execute(jj_root_cap, ignore_immut)
+  local sources = vim.trim(vim.b.jj_squash_revsets or "")
+  local dest = _jj_revset_under_cursor()
+  if sources == "" or not dest then
+    vim.notify("Squash mode: pick sources (s) and a destination line", vim.log.levels.WARN)
+    return
+  end
+  local runner = require("jj.core.runner")
+  local src_list = {}
+  for s in sources:gmatch("%S+") do table.insert(src_list, s) end
+  local src_descs = {}
+  for _, s in ipairs(src_list) do table.insert(src_descs, _jj_capture(runner, s, "description")) end
+  local dest_desc = _jj_capture(runner, dest, "description")
+  local msg = _squash_message(dest_desc, src_descs)
+  local function leave_squash_mode()
+    vim.b.jj_squash_revsets = nil
+    -- transition_mode("normal") tears down mode maps/highlights. (Older
+    -- pinned jj.nvim has no exit_special_mode helper.)
+    pcall(require("jj.cmd.log").transition_mode, "normal")
+  end
+  runner.execute_command_async(
+    "jj squash --ignore-working-copy"
+      .. (ignore_immut and " --ignore-immutable" or "")
+      .. " -f " .. vim.fn.shellescape(sources) .. " -t " .. vim.fn.shellescape(dest) .. " -m " .. vim.fn.shellescape(msg),
+    function()
+      _jj_in_root(jj_root_cap, function()
+        leave_squash_mode()
+        require("jj.utils").notify("Squashed into " .. dest .. " (message kept)", vim.log.levels.INFO)
+        require("jj.cmd").log({})
+        _jj_log_panel_setup()
+        _jj_edit_desc_later(dest)
+      end)
+    end, "Error squashing into " .. dest,
+    nil, nil, function()
+      -- Failure must also leave the mode or the panel stays frozen.
+      _jj_in_root(jj_root_cap, function()
+        leave_squash_mode()
+        require("jj.cmd").log({})
+        _jj_log_panel_setup()
+      end)
+    end)
+end
+
+-- Center the log panel on @ once its content streams in (poll, terminal
+-- buffer fills async). Only on fresh open, never on refresh.
+local function _jj_center_on_at(buf)
+  local ok_parser, parser = pcall(require, "jj.core.parser")
+  if not ok_parser or not parser.get_revset then return end
+  local tries = 0
+  local function attempt()
+    if not vim.api.nvim_buf_is_valid(buf) then return end
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    for i, l in ipairs(lines) do
+      if l:find("@", 1, true) and parser.get_revset(l) then
+        local win = vim.fn.bufwinid(buf)
+        if win ~= -1 then
+          vim.api.nvim_win_set_cursor(win, { i, 0 })
+          vim.api.nvim_win_call(win, function() vim.cmd("normal! zz") end)
+        end
+        return
+      end
+    end
+    tries = tries + 1
+    if tries < 20 then vim.defer_fn(attempt, 100) end
+  end
+  vim.defer_fn(attempt, 200)
+end
+
+-- Self-healing overrides: every log refresh WIPES the buffer (new buf id),
+-- taking our maps with it. Re-assert on every panel entry — cheap,
+-- idempotent, always wins at keypress time.
+vim.api.nvim_create_augroup("JjPanelOverrides", { clear = true })
+vim.api.nvim_create_autocmd("BufEnter", {
+  group = "JjPanelOverrides",
+  callback = function()
+    local ok_term, terminal = pcall(require, "jj.ui.terminal")
+    if not ok_term or not (terminal.state and terminal.state.buf) then return end
+    local buf = vim.api.nvim_get_current_buf()
+    if terminal.state.buf ~= buf then return end
+    if not (terminal.state.buf_cmd == "log" or terminal.state.buf_cmd == nil) then return end
+    local ok_p, parser = pcall(require, "jj.core.parser")
+    if not ok_p or not parser.get_revset then return end
+    local n = math.min(15, vim.api.nvim_buf_line_count(buf))
+    for _, l in ipairs(vim.api.nvim_buf_get_lines(buf, 0, n, false)) do
+      if parser.get_revset(l) then
+        _jj_log_panel_setup(buf, false)
+        return
+      end
+    end
+  end,
+})
+
+-- Nuclear option that ends all map-precedence races: replace upstream's
+-- squash handlers IN the module table. Refresh re-resolves mode maps from
+-- these, so our execute wins on every buffer, forever. Map overrides above
+-- stay as first-open coverage.
+local _jj_handlers_patched = false
+local function _jj_patch_upstream_handlers()
+  if _jj_handlers_patched then return end
+  local ok, logmod = pcall(require, "jj.cmd.log")
+  if not ok or not logmod.handle_squash_execute or not logmod.handle_log_quick_squash then return end
+  _jj_handlers_patched = true
+  -- Container pins an older jj.nvim without exit_special_mode (Esc in any
+  -- mode nil-errors and freezes the panel). Backfill it.
+  if not logmod.exit_special_mode then
+    logmod.exit_special_mode = function(_mode)
+      pcall(logmod.transition_mode, "normal")
+    end
+  end
+  local orig_quick = logmod.handle_log_quick_squash
+  logmod.handle_log_quick_squash = function(interactive)
+    if interactive then return orig_quick(true) end
+    local root = _find_jj_root_in_tab() or _find_jj_root()
+    if not root then vim.notify("Not a jj repo", vim.log.levels.WARN) return end
+    _jj_in_root(root, function() _jj_log_quick_squash_keep_msg(root) end)
+  end
+  logmod.handle_squash_execute = function(mode, ignore_immut, interactive)
+    if interactive then
+      vim.notify("Interactive squash via panel uses stock flow (message kept as-is)", vim.log.levels.INFO)
+    end
+    local root = _find_jj_root_in_tab() or _find_jj_root()
+    if not root then vim.notify("Not a jj repo", vim.log.levels.WARN) return end
+    _jj_in_root(root, function() _jj_log_squash_mode_execute(root, ignore_immut) end)
+  end
+end
+
+function _jj_log_panel_setup(buf, center)
+  -- Anchor to terminal.state.buf, NOT the current buffer: this runs on
+  -- schedule/async where focus may already be elsewhere (fast users!), and
+  -- keying off current buf silently skipped all overrides.
   local ok_term, terminal = pcall(require, "jj.ui.terminal")
-  if not (ok_term and terminal and terminal.state and terminal.state.buf == buf) then return end
+  if not (ok_term and terminal and terminal.state and terminal.state.buf) then return end
+  buf = (buf and vim.api.nvim_buf_is_valid(buf)) and buf or terminal.state.buf
+  if not vim.api.nvim_buf_is_valid(buf) then return end
+  _jj_patch_upstream_handlers()
   local win = vim.fn.bufwinid(buf)
   if win ~= -1 then vim.wo[win].winbar = " JJ " .. _jj_log_legend end
+  if center then _jj_center_on_at(buf) end
   vim.keymap.set("n", "<S-s>", function()
     local root = _find_jj_root_in_tab() or _find_jj_root()
     if not root then vim.notify("Not a jj repo", vim.log.levels.WARN) return end
     _jj_in_root(root, function() _jj_log_quick_squash_keep_msg(root) end)
   end, { buffer = buf, silent = true, nowait = true, desc = "Quick squash into parent (keeps Includes squashed: msg)" })
+  -- <CR> in squash mode (s … then move) runs OUR execute with message
+  -- keeping; outside squash mode it keeps the stock edit behavior.
+  local function assert_our_cr()
+    vim.keymap.set("n", "<CR>", function()
+      local root = _find_jj_root_in_tab() or _find_jj_root()
+      if not root then vim.notify("Not a jj repo", vim.log.levels.WARN) return end
+  _jj_in_root(root, function()
+      if vim.b.jj_squash_revsets and vim.trim(vim.b.jj_squash_revsets) ~= "" then
+        _jj_log_squash_mode_execute(root, false)
+      else
+        require("jj.cmd.log").handle_log_edit(false, false)
+      end
+    end)
+    end, { buffer = buf, silent = true, nowait = true, desc = "Squash into (keep msg) / edit revision" })
+  end
+  assert_our_cr()
+  -- Entering squash mode re-applies upstream mode maps (its <CR> would shadow
+  -- ours and squash with -u, losing the message). Re-assert ours after.
+  vim.keymap.set({ "n", "v" }, "s", function()
+    require("jj.cmd.log").handle_log_squash()
+    assert_our_cr()
+  end, { buffer = buf, silent = true, nowait = true, desc = "Squash (keep-msg execute)" })
 end
 
-map("n", "<leader>grs", function()
+-- grs (editor after) / grS (instant): squash @ into parent in a horizontal
+-- split with a prebuilt Includes squashed: message.
+function _jj_grs_squash(with_editor)
   _with_jj_repo(function()
   local jj_root_cap = _find_jj_root() or vim.fn.getcwd()
     require("lazy").load({ plugins = { "jj.nvim" } })
@@ -307,15 +505,35 @@ map("n", "<leader>grs", function()
     local parent_desc = _jj_capture(runner, "@-", "description")
     local at_desc = _jj_capture(runner, "@", "description")
     local msg = _squash_message(parent_desc, { at_desc })
-    local cmd = "jj squash --ignore-working-copy --from @ --into @- -m " .. vim.fn.shellescape(msg)
     _jj_in_root(jj_root_cap, function()
       -- Horizontal split, same place as <C-g>: visible but out of the way,
       -- keep working elsewhere while it runs.
-      require("nvchad.term").runner({ pos = "sp", cmd = cmd, id = "jjSquashTerm", clear_cmd = false })
+      vim.cmd("botright 12split")
+      local buf = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_win_set_buf(0, buf)
+      vim.fn.termopen({ "jj", "squash", "--ignore-working-copy", "--from", "@", "--into", "@-", "-m", msg }, {
+        cwd = jj_root_cap,
+        on_exit = function(_, code, _)
+          vim.schedule(function()
+            _jj_in_root(jj_root_cap, function()
+              if code == 0 then
+                require("jj.utils").notify("Squashed @ into parent (message kept)", vim.log.levels.INFO)
+                if require("jj.ui.terminal").is_log_buffer_open() then require("jj.cmd").log({}) end
+                if with_editor then _jj_edit_desc_later("@-") end
+              else
+                vim.notify("Squash failed, see terminal output above", vim.log.levels.WARN)
+              end
+            end)
+          end)
+        end,
+      })
       vim.notify("Squashing @ into parent (horizontal term) — output lands there", vim.log.levels.INFO)
     end)
   end)
-end, { desc = "jj squash @ into parent (horizontal term, keeps Includes squashed: msg)" })
+end
+
+map("n", "<leader>grs", function() _jj_grs_squash(true) end, { desc = "jj squash @ into parent (horizontal term, editor after)" })
+map("n", "<leader>grS", function() _jj_grs_squash(false) end, { desc = "jj squash @ into parent (horizontal term, instant)" })
 map("n", "<leader>grd", "<cmd>JJ rebase<CR>", { desc = "jj rebase -d <destination>" })
 map("n", "<leader>gS", "<cmd>JJ split<CR>", { desc = "jj split [<change>]" })
 map("n", "<leader>gR", "<cmd>JJ resolve<CR>", { desc = "jj resolve [<files>...]" })
@@ -919,7 +1137,9 @@ local function _jj_workspaces_to_base()
   local moved, left = {}, {}
   for _, w in ipairs(ws) do
     local at_id = at(w.path, "log -r @ --no-graph -T 'change_id.shortest(8)'")
-    local diff = at(w.path, "diff --stat -r @")
+    -- --name-only: empty output means no changes (--stat always prints a
+    -- summary line, even for empty diffs).
+    local diff = at(w.path, "diff --name-only -r @")
     local desc = at(w.path, "log -r @ --no-graph -T 'description'")
     if diff ~= "" or desc ~= "" then
       table.insert(left, w.name .. " (not empty)")
@@ -932,9 +1152,10 @@ local function _jj_workspaces_to_base()
       if #kids <= 1 then
         table.insert(left, w.name .. " (linear, fine)")
       else
-        local base = vim.trim(at(w.path, "fork-base"):match("^(%S+)") or "")
+        local raw = at(w.path, "fork-base")
+        local base = vim.trim((raw:match("^(%S+)") or ""))
         if base == "" or base == at_id then
-          table.insert(left, w.name .. " (no base found)")
+          table.insert(left, w.name .. " (no base found" .. (raw ~= "" and (": " .. vim.trim(raw):sub(1, 60)) or "") .. ")")
         else
           local ok = vim.trim(runner.execute_command("jj --ignore-working-copy -R " .. vim.fn.shellescape(w.path) .. " edit -r " .. vim.fn.shellescape(base) .. " 2>&1", nil, nil, true) or "")
           table.insert(moved, w.name .. " → " .. base .. (ok ~= "" and (" (" .. ok .. ")") or ""))
@@ -944,6 +1165,7 @@ local function _jj_workspaces_to_base()
   end
   local msg = "workspaces to base: " .. #moved .. " moved"
   if #moved > 0 then msg = msg .. " (" .. table.concat(moved, ", ") .. ")" end
+  if #left > 0 then msg = msg .. " — left: " .. table.concat(left, ", ") end
   vim.notify(msg, #moved > 0 and vim.log.levels.INFO or vim.log.levels.WARN)
 end
 
