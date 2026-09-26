@@ -186,7 +186,7 @@ edit commit (enter) | <CR>
 edit immutable | <S-CR>
 describe | d
 diff | <S-d>
-new commit | n
+new commit | m (n/N stay free for /-search)
 new after | <C-n>
 abandon | a
 rebase onto/after/before | r then o/a/b (or S-o/S-a/S-b for immutable) + Esc to exit mode

@@ -241,7 +241,7 @@ map("n", "<leader>ge", "<cmd>JJ describe<CR>", { desc = "jj describe [<change>]"
 -- Log-panel setup: key legend on top (winbar — never touches buffer lines,
 -- the plugin parses cursor lines for revsets) + our <S-s> quick-squash that
 -- keeps an "Includes squashed:" summary (upstream -u drops the message).
-local _jj_log_legend = "s squash | S-s quick-squash(keep msg) | d describe | D diff | e edit | n new | r rebase | a abandon | b/B bookmark | p push | f fetch | o PR | u undo | g? help"
+local _jj_log_legend = "s squash | S-s quick-squash(keep msg) | d describe | D diff | e edit | m new | r rebase | a abandon | b/B bookmark | p push | f fetch | o PR | u undo | g? help"
 
 local function _jj_log_quick_squash_keep_msg(jj_root_cap)
   local ok_parser, parser = pcall(require, "jj.core.parser")
