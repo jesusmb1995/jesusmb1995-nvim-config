@@ -439,16 +439,20 @@ vim.api.nvim_create_autocmd("TermOpen", {
     })
     -- Warm tmux terminals only: nvchad stores the termopen cmd on the buffer
     -- entry BEFORE termopen runs, so the `-s nvim-<id>-<dir>` session is
-    -- parseable here. Buffer-local mappings keep the global t <C-l>
-    -- (agent-term close) intact everywhere else, including the agent term
-    -- itself (its cmd attaches agent@*, which never matches nvim%-).
+    -- parseable here.
     local term_opts = vim.g.nvchad_terms and vim.g.nvchad_terms[tostring(buf)]
     local sess = (term_opts and warm_session_from_cmd(term_opts.cmd)) or warm_session_from_tty()
-    if sess and sess:match "^nvim%-" then
+    local term_id = term_opts and term_opts.id
+    local is_agent = type(term_id) == "string" and term_id:match("^agentTerm") ~= nil
+    if sess and sess:match("^nvim%-") then
       vim.b[buf].warm_tmux_session = sess
-      -- Use Ctrl+Shift+l (C-S-l / C-L) ONLY on tmux terminals for the agent hint.
-      -- Plain C-l must behave as "go right" (same as C-x then l: exit to normal
-      -- and wincmd l). agent-term.lua sets a GLOBAL t <C-l>; shadow it here.
+    end
+    -- Plain C-l is ALWAYS "go right" in terminal buffers (except the agent
+    -- term itself, where the global t <C-l> closes it): t exits to normal
+    -- and moves right, n moves right, x is a noop. The agent hint lives ONLY
+    -- on Ctrl+Shift+l (C-S-l / C-L) of warm tmux terminals below — plain C-l
+    -- must never send anything to the agent (doc/g_round_improvements_16.md).
+    if not is_agent then
       vim.keymap.set("t", "<C-l>", function()
         vim.cmd("stopinsert")
         vim.cmd("wincmd l")
@@ -466,21 +470,19 @@ vim.api.nvim_create_autocmd("TermOpen", {
         nowait = true,
         desc = "Normal navigation right (C-x then l)",
       })
-      vim.keymap.set("x", "<C-l>", "<Nop>", {
-        buffer = buf,
-        silent = true,
-        nowait = true,
-        desc = "Noop in tmux terminal visual (use Ctrl+Shift+l for hint)",
-      })
-      -- Use Ctrl+Shift+l (C-S-l / C-L) on tmux terminals to avoid clashing with
-      -- Ctrl+x then l (e.g. window navigation that includes l) and plain C-l
+    end
+    vim.keymap.set("x", "<C-l>", "<Nop>", {
+      buffer = buf,
+      silent = true,
+      nowait = true,
+      desc = "Noop in terminal visual (use Ctrl+Shift+l for hint)",
+    })
+    -- Use Ctrl+Shift+l (<C-S-l>) on tmux terminals to avoid clashing with
+    -- Ctrl+x then l (e.g. window navigation that includes l) and plain C-l.
+    -- NOTE: In Vim/Neovim, <C-L> is normalized to <C-l> (plain Ctrl+l);
+    -- Ctrl+Shift+L MUST be mapped as <C-S-l>, never <C-L>.
+    if sess and sess:match("^nvim%-") then
       vim.keymap.set("t", "<C-S-l>", function() send_warm_hint("t") end, {
-        buffer = buf,
-        silent = true,
-        nowait = true,
-        desc = "Send tmux session hint to agent terminal (Ctrl+Shift+l)",
-      })
-      vim.keymap.set("t", "<C-L>", function() send_warm_hint("t") end, {
         buffer = buf,
         silent = true,
         nowait = true,
@@ -492,19 +494,7 @@ vim.api.nvim_create_autocmd("TermOpen", {
         nowait = true,
         desc = "Send tmux session + cursor line hint to agent terminal (Ctrl+Shift+l)",
       })
-      vim.keymap.set("n", "<C-L>", function() send_warm_hint("n") end, {
-        buffer = buf,
-        silent = true,
-        nowait = true,
-        desc = "Send tmux session + cursor line hint to agent terminal (Ctrl+Shift+l)",
-      })
       vim.keymap.set("x", "<C-S-l>", function() send_warm_hint("x") end, {
-        buffer = buf,
-        silent = true,
-        nowait = true,
-        desc = "Send tmux session + selection hint to agent terminal (Ctrl+Shift+l)",
-      })
-      vim.keymap.set("x", "<C-L>", function() send_warm_hint("x") end, {
         buffer = buf,
         silent = true,
         nowait = true,

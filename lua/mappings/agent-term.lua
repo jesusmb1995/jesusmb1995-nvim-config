@@ -190,6 +190,9 @@ map("t", "<C-l>", function()
 end, { desc = "Close agent terminal from inside" })
 
 map("v", "<C-l>", function()
+  -- Terminal buffers have their own keys (warm hint on C-S-l, noop on C-l):
+  -- never send a bogus file reference from a terminal visual selection.
+  if vim.bo.buftype == "terminal" then return end
   local start_line = vim.fn.line "v"
   local end_line = vim.fn.line "."
   if start_line > end_line then
@@ -201,6 +204,8 @@ map("v", "<C-l>", function()
 end, { desc = "Send file section reference to agent terminal" })
 
 map("n", "<C-S-l>", function()
+  -- Terminal buffers use the warm hint keys instead; plain editor only here.
+  if vim.bo.buftype == "terminal" then return end
   local file = vim.fn.expand "%:."
   vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "x", false)
   send_to_agent("@" .. file .. " ")
