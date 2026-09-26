@@ -399,7 +399,9 @@ vim.api.nvim_create_autocmd("TermOpen", {
     vim.api.nvim_set_option_value("winfixheight", true, {})
     -- Disable Ctrl-i / Ctrl-o (jump list) inside terminal buffers — they break
     -- the terminal's own <Tab> / jump handling and can unexpectedly switch buffers.
-    vim.keymap.set("t", "<C-i>", "<Nop>", { buffer = buf, silent = true, desc = "Disabled Ctrl-i in terminal" })
+    -- <C-i> is Tab's keycode, so Nop'ing it would eat Tab and break
+    -- remote autocomplete. Explicit passthrough: Tab produces \t in text.
+    vim.keymap.set("t", "<Tab>", "<Tab>", { buffer = buf, silent = true, desc = "Tab passthrough to terminal" })
     vim.keymap.set("t", "<C-o>", "<Nop>", { buffer = buf, silent = true, desc = "Disabled Ctrl-o in terminal" })
     vim.keymap.set("n", "<C-i>", "<Nop>", { buffer = buf, silent = true, desc = "Disabled Ctrl-i in terminal buffer" })
     vim.keymap.set("n", "<C-o>", "<Nop>", { buffer = buf, silent = true, desc = "Disabled Ctrl-o in terminal buffer" })
