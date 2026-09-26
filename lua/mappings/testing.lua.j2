@@ -137,9 +137,19 @@ local function ctest_gtest_picker(term_pos, term_id)
   end
 
   -- ── save & run ─────────────────────────────────────────────────────────────
+  -- Resolve the bookmarks file the same way savecmd-nvim does: central
+  -- per-cwd store when deployed, legacy in-cwd file otherwise.
+  local function bookmarks_file_for(cwd)
+    local ok, m = pcall(require, "savecmd-nvim")
+    if ok and type(m) == "table" and type(m._store_paths) == "function" then
+      local ok2, bf = pcall(m._store_paths)
+      if ok2 and type(bf) == "string" and bf ~= "" then return bf end
+    end
+    return cwd .. "/.local_cmd_bookmarks"
+  end
   local function save_and_run(item)
     local cwd   = vim.fn.getcwd()
-    local bfile = cwd .. "/.local_cmd_bookmarks"
+    local bfile = bookmarks_file_for(cwd)
     local lines = vim.fn.filereadable(bfile) == 1 and vim.fn.readfile(bfile) or {}
     local exists = false
     for _, l in ipairs(lines) do

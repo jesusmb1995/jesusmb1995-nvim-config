@@ -1,48 +1,70 @@
-{%- set ns = namespace(local_deploy=false) -%}
-{% for repo in repositories -%}
-{% if repo.id == "cmd_bookmarks" and repo.enabled -%}
-{% set ns.local_deploy = true -%}
-{% endif -%}
-{% endfor -%}
-{% if ns.local_deploy %}
--- cmd_bookmarks is deployed locally by its install hook to
--- ~/.local/share/cmd_bookmarks: the same central store zsh's savecmd.zsh uses.
-return {
-  {
-    dir = vim.fn.expand "~/.local/share/cmd_bookmarks",
-    lazy = true,
-    cmd = { "LaunchVert", "LaunchHoriz", "LaunchFloat" },
-    keys = {
-      { "<leader><A-v>", "<cmd>LaunchVert<cr>",  desc = "Launch command in vertical terminal" },
-      { "<leader><A-h>", "<cmd>LaunchHoriz<cr>", desc = "Launch command in horizontal terminal" },
-      { "<leader><A-z>", "<cmd>LaunchHoriz<cr>", desc = "Run cmd bookmark in horizontal terminal" },
-      { "<leader><A-Y>", "<cmd>LaunchHoriz<cr>", desc = "Run cmd bookmark in horizontal terminal (tmux-wm safe)" },
-      { "<leader><A-i>", "<cmd>LaunchFloat<cr>", desc = "Launch command in floating window" },
-      { "<leader>rr",    "<cmd>LaunchLast<cr>",  desc = "Launch last run command" },
-    },
-    config = function()
-      require('savecmd-nvim').setup()
+{#- gerpsonal/gpersonal/term: cmd_bookmarks repo ships its own nvim plugin
+    inside the bundle (install hook symlinks src/cmd_bookmarks to
+    ~/.local/share/cmd_bookmarks). Prefer that local copy at RUNTIME (it has
+    the central per-cwd store); fall back to the github clone otherwise.
+    Runtime detection (not render-time) so stale renders still heal.
+    Also: empty store opens the resolved bookmarks file for adding instead of
+    just notifying (see doc/g_round_improvements_15.md). -#}
+{#- NOTE: top-level locals run under generate_nvim.lua's vim stub at build
+    time (Proxy ~= falsy) -> use_local=false -> url spec discovered. -#}
+local _cb_dir = vim.fn.expand("~/.local/share/cmd_bookmarks")
+local _cb_lua = _cb_dir .. "/lua/savecmd-nvim.lua"
+local _use_local = vim.fn.filereadable(_cb_lua) == 1
+
+-- Empty store -> open resolved bookmarks file so the user can add one.
+-- Runs BEFORE setup() so the user commands capture the wrapped functions.
+local function _wrap_launch_empty_opens_file(m)
+  local store = m._store_paths
+  local function ensure_or_open(orig)
+    return function()
+      if type(store) == "function" then
+        local ok, bf = pcall(store)
+        if ok and type(bf) == "string" and bf ~= "" then
+          local lines = vim.fn.filereadable(bf) == 1 and vim.fn.readfile(bf) or {}
+          local has = false
+          for _, l in ipairs(lines) do
+            if l ~= "" and not l:match("^%s*#") and l:match("^[^|]+|.+$") then has = true break end
+          end
+          if not has then
+            vim.fn.mkdir(vim.fn.fnamemodify(bf, ":h"), "p")
+            if vim.fn.filereadable(bf) ~= 1 then
+              vim.fn.writefile({ "# one bookmark per line, format: name|command" }, bf)
+            end
+            vim.cmd("edit " .. vim.fn.fnameescape(bf))
+            vim.notify("No saved cmd bookmarks yet — add a name|command line, :w, then Launch again",
+              vim.log.levels.INFO)
+            return
+          end
+        end
+      end
+      return orig()
     end
-  }
+  end
+  m.launch_vertical = ensure_or_open(m.launch_vertical)
+  m.launch_horizontal = ensure_or_open(m.launch_horizontal)
+  m.launch_float = ensure_or_open(m.launch_float)
+end
+
+local _spec = {
+  lazy = true,
+  cmd = { "LaunchVert", "LaunchHoriz", "LaunchFloat" },
+  keys = {
+    { "<leader><A-v>", "<cmd>LaunchVert<cr>",  desc = "Launch command in vertical terminal" },
+    { "<leader><A-h>", "<cmd>LaunchHoriz<cr>", desc = "Launch command in horizontal terminal" },
+    { "<leader><A-z>", "<cmd>LaunchHoriz<cr>", desc = "Run cmd bookmark in horizontal terminal" },
+    { "<leader><A-Y>", "<cmd>LaunchHoriz<cr>", desc = "Run cmd bookmark in horizontal terminal (tmux-wm safe)" },
+    { "<leader><A-i>", "<cmd>LaunchFloat<cr>", desc = "Launch command in floating window" },
+    { "<leader>rr",    "<cmd>LaunchLast<cr>",  desc = "Launch last run command" },
+  },
+  config = function()
+    local m = require('savecmd-nvim')
+    _wrap_launch_empty_opens_file(m)
+    m.setup()
+  end,
 }
-{% else %}
-return {
-  {
-    url = "https://github.com/jesusmb1995/cmd_bookmarks",
-    -- dir = "/luksmap/Code/savecmd",
-    lazy = true,
-    cmd = { "LaunchVert", "LaunchHoriz", "LaunchFloat" },
-    keys = {
-      { "<leader><A-v>", "<cmd>LaunchVert<cr>",  desc = "Launch command in vertical terminal" },
-      { "<leader><A-h>", "<cmd>LaunchHoriz<cr>", desc = "Launch command in horizontal terminal" },
-      { "<leader><A-z>", "<cmd>LaunchHoriz<cr>", desc = "Run cmd bookmark in horizontal terminal" },
-      { "<leader><A-Y>", "<cmd>LaunchHoriz<cr>", desc = "Run cmd bookmark in horizontal terminal (tmux-wm safe)" },
-      { "<leader><A-i>", "<cmd>LaunchFloat<cr>", desc = "Launch command in floating window" },
-      { "<leader>rr",    "<cmd>LaunchLast<cr>",  desc = "Launch last run command" },
-    },
-    config = function()
-      require('savecmd-nvim').setup()
-    end
-  }
-}
-{% endif %}
+if _use_local then
+  _spec.dir = _cb_dir
+else
+  _spec.url = "https://github.com/jesusmb1995/cmd_bookmarks"
+end
+return { _spec }
