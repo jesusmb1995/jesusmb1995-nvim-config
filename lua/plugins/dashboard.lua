@@ -4,6 +4,16 @@ return {
   config = function()
     math.randomseed(vim.loop.hrtime())
 
+    local dp = require('dashboard-projects')
+
+    local usage_path = vim.fn.stdpath('cache') .. '/dashboard/usage'
+    local project_usage = dp.read_usage(usage_path)
+
+    local function stamp_project_open(project_path)
+      project_usage[project_path] = os.time()
+      dp.write_usage(usage_path, project_usage)
+    end
+
     local function cd_and_open_recent_file(project_path)
       if vim.fn.isdirectory(project_path) ~= 1 then
         vim.notify('Invalid project path: ' .. project_path, vim.log.levels.WARN)
@@ -11,6 +21,7 @@ return {
       end
 
       local normalized_root = vim.fs.normalize(project_path)
+      stamp_project_open(normalized_root)
       vim.cmd('cd ' .. vim.fn.fnameescape(normalized_root))
 
       for _, file in ipairs(vim.v.oldfiles) do
@@ -34,121 +45,6 @@ return {
       vim.notify('No recent file found for ' .. normalized_root, vim.log.levels.INFO)
     end
 
-    local function normalize_existing_dir(path)
-      local expanded = vim.fn.expand(path or '')
-      if expanded == '' then
-        return nil
-      end
-      local normalized = vim.fs.normalize(expanded)
-      if vim.fn.isdirectory(normalized) == 1 then
-        return normalized
-      end
-      return nil
-    end
-
-    local function load_j_bookmarks()
-      local bookmarks_file = vim.fn.expand('~/.bookmarks')
-      if vim.fn.filereadable(bookmarks_file) ~= 1 then
-        return {}
-      end
-      local lines = vim.fn.readfile(bookmarks_file)
-
-      local stats_path = vim.fn.stdpath('data') .. '/zsh-bookmark-jumper.json'
-      local usage_stats = {}
-      if vim.fn.filereadable(stats_path) == 1 then
-        local ok, decoded = pcall(vim.json.decode, table.concat(vim.fn.readfile(stats_path), '\n'))
-        if ok and type(decoded) == 'table' then
-          usage_stats = decoded
-        end
-      end
-
-      local bookmarks = {}
-      for _, line in ipairs(lines) do
-        local path, name = line:match('^(.+)|(.+)$')
-        if name and path then
-          path = path:gsub('%$HOME', vim.env.HOME)
-          local normalized_path = normalize_existing_dir(path)
-          if normalized_path then
-            table.insert(bookmarks, {
-              name = name,
-              path = normalized_path,
-              last_used = usage_stats[name] or 0,
-            })
-          end
-        end
-      end
-
-      table.sort(bookmarks, function(a, b)
-        return (a.last_used or 0) > (b.last_used or 0)
-      end)
-
-      return bookmarks
-    end
-
-    local function read_dashboard_projects(cache_path)
-      if vim.fn.filereadable(cache_path) ~= 1 then
-        return {}
-      end
-
-      local file = io.open(cache_path, 'rb')
-      if not file then
-        return {}
-      end
-      local raw = file:read('*a')
-      file:close()
-
-      if raw == '' then
-        return {}
-      end
-
-      local ok, loader = pcall(loadstring, raw)
-      if not ok or type(loader) ~= 'function' then
-        return {}
-      end
-      local ok_list, list = pcall(loader)
-      if not ok_list or type(list) ~= 'table' then
-        return {}
-      end
-      return list
-    end
-
-    local function combine_projects_for_display(existing, jump_top, jump_limit, default_limit)
-      local seen = {}
-      local ordered = {}
-      local function add(path)
-        local normalized = normalize_existing_dir(path)
-        if normalized and not seen[normalized] then
-          seen[normalized] = true
-          table.insert(ordered, normalized)
-          return true
-        end
-        return false
-      end
-
-      local jump_added = 0
-      for _, item in ipairs(jump_top) do
-        if jump_added >= jump_limit then
-          break
-        end
-        if add(item.path) then
-          jump_added = jump_added + 1
-        end
-      end
-
-      -- dashboard cache stores older->newer, walk backwards for most recent first
-      local default_added = 0
-      for idx = #existing, 1, -1 do
-        if default_added >= default_limit then
-          break
-        end
-        if add(existing[idx]) then
-          default_added = default_added + 1
-        end
-      end
-
-      return ordered
-    end
-
     local function reverse_copy(list)
       local reversed = {}
       for idx = #list, 1, -1 do
@@ -157,29 +53,36 @@ return {
       return reversed
     end
 
-    local jump_limit = 6
-    local default_recent_limit = 6
+    local dashboard_cache = vim.fn.stdpath('cache') .. '/dashboard/cache'
 
-    local function get_display_projects()
-      local j_bookmarks = load_j_bookmarks()
-      local dashboard_cache = vim.fn.stdpath('cache') .. '/dashboard/cache'
-      local dashboard_projects = read_dashboard_projects(dashboard_cache)
-      return combine_projects_for_display(dashboard_projects, j_bookmarks, jump_limit, default_recent_limit)
-    end
+    -- Workspace variants by panel main path, rebuilt with every panel list
+    -- computation. Consumed by restyle_dashboard_entries for the Shift+letter
+    -- variant selector bindings.
+    local panel_variants = {}
 
-    local function get_full_projects_for_picker()
-      local j_bookmarks = load_j_bookmarks()
-      local dashboard_cache = vim.fn.stdpath('cache') .. '/dashboard/cache'
-      local dashboard_projects = read_dashboard_projects(dashboard_cache)
-      return combine_projects_for_display(
-        dashboard_projects,
-        j_bookmarks,
-        #j_bookmarks,
-        #dashboard_projects
+    local function collect_candidates()
+      local j_bookmarks = dp.load_bookmarks(
+        vim.fn.expand('~/.bookmarks'),
+        vim.fn.stdpath('data') .. '/zsh-bookmark-jumper.json'
       )
+      local dashboard_projects = dp.read_project_list(dashboard_cache)
+      return dp.collect(j_bookmarks, dashboard_projects, project_usage)
     end
 
-    local function open_project_jump_picker()
+    -- Panel mains (min workspace path per group, usage-sorted,
+    -- archive-filtered). Same list is written to the plugin's cache file.
+    local function get_display_projects()
+      local groups = dp.group(collect_candidates(), project_usage)
+      local mains, variants = dp.panel_mains(groups)
+      panel_variants = variants
+      return mains
+    end
+
+    local function get_picker_entries(include_archived)
+      return dp.picker_entries(collect_candidates(), include_archived)
+    end
+
+    local function open_project_picker(entries, title, empty_msg)
       local ok_pickers, pickers = pcall(require, 'telescope.pickers')
       local ok_finders, finders = pcall(require, 'telescope.finders')
       local ok_conf, conf = pcall(require, 'telescope.config')
@@ -190,20 +93,19 @@ return {
         return
       end
 
-      local projects = get_full_projects_for_picker()
-      if #projects == 0 then
-        vim.notify('No jump/recent projects found', vim.log.levels.INFO)
+      if #entries == 0 then
+        vim.notify(empty_msg, vim.log.levels.INFO)
         return
       end
 
       pickers.new({}, {
-        prompt_title = 'Jump + Recent Projects',
+        prompt_title = title,
         finder = finders.new_table {
-          results = projects,
-          entry_maker = function(path)
-            local display = vim.fn.fnamemodify(path, ':~')
+          results = entries,
+          entry_maker = function(entry)
+            local display = vim.fn.fnamemodify(entry.path, ':~') .. entry.mark
             return {
-              value = path,
+              value = entry.path,
               display = display,
               ordinal = display,
             }
@@ -221,6 +123,46 @@ return {
           return true
         end,
       }):find()
+    end
+
+    local function open_project_jump_picker()
+      open_project_picker(
+        get_picker_entries(false),
+        'Jump + Recent Projects',
+        'No jump/recent projects found'
+      )
+    end
+
+    local function open_project_archived_picker()
+      open_project_picker(
+        get_picker_entries(true),
+        'All Projects (incl. archived)',
+        'No projects found'
+      )
+    end
+
+    local function open_workspace_selector(target)
+      local members = (target and target.variants) or {}
+      if #members == 0 then
+        return
+      end
+      local items = {}
+      for _, m in ipairs(members) do
+        table.insert(items, {
+          path = m.path,
+          label = vim.fn.fnamemodify(m.path, ':~') .. ' (' .. dp.rel_age(m.usage) .. ')',
+        })
+      end
+      vim.ui.select(items, {
+        prompt = 'Workspace:',
+        format_item = function(item)
+          return item.label
+        end,
+      }, function(choice)
+        if choice then
+          cd_and_open_recent_file(choice.path)
+        end
+      end)
     end
 
     local function split_leaf_and_parent(path)
@@ -243,10 +185,11 @@ return {
       return path:sub(1, keep_left) .. '...' .. path:sub(-keep_right)
     end
 
-    -- Shortcut keys ([l] Lazy, [q] Quit, [p] Jump Projects) are reserved.
-    -- Populated below where the shortcuts table is defined; entry-letter
-    -- maps must never use these keys or they silently override the
-    -- buffer-local shortcut maps bound while the dashboard renders.
+    -- Shortcut keys ([l] Lazy, [q] Quit, [p] Jump Projects, [P] All incl.
+    -- archived) are reserved. Populated below where the shortcuts table is
+    -- defined; entry-letter maps must never use these keys or they silently
+    -- override the buffer-local shortcut maps bound while the dashboard
+    -- renders.
     local reserved_shortcut_keys = {}
 
     local function restyle_dashboard_entries(bufnr)
@@ -278,9 +221,17 @@ return {
               left_width = left_width,
               path_col = path_start - 1,
             })
+            local variants = nil
+            if section == 'project' then
+              variants = panel_variants[vim.fs.normalize(expanded)]
+              if variants and #variants < 2 then
+                variants = nil
+              end
+            end
             row_targets[idx - 1] = {
               path = expanded,
               is_project = section == 'project',
+              variants = variants,
             }
           end
         end
@@ -314,9 +265,9 @@ return {
         if target and type(virt) == 'table' and type(virt[1]) == 'table' then
           local key = tostring(virt[1][1] or '')
           -- Shadowing guard: restyle must never rebind a multi-char token
-          -- or a reserved shortcut key ([l]/[q]/[p]) — dashboard-nvim binds
-          -- those on the same buffer, and a later keymap.set for the same
-          -- key would silently kill the shortcut.
+          -- or a reserved shortcut key ([l]/[q]/[p]/[P]) — dashboard-nvim
+          -- binds those on the same buffer, and a later keymap.set for the
+          -- same key would silently kill the shortcut.
           if key:match('^%S+$') and #key == 1 and not reserved_shortcut_keys[key] then
             vim.keymap.set('n', key, function()
               open_target(target)
@@ -326,6 +277,20 @@ return {
               nowait = true,
               desc = 'dashboard custom entry open',
             })
+            -- Workspace groups: Shift+letter opens the variant selector.
+            -- Entry letters come from the lowercase-only pool, so the
+            -- uppercase form is free (guarded anyway for future-proofing).
+            local upper = key:upper()
+            if target.variants and upper ~= key and not reserved_shortcut_keys[upper] then
+              vim.keymap.set('n', upper, function()
+                open_workspace_selector(target)
+              end, {
+                buffer = bufnr,
+                silent = true,
+                nowait = true,
+                desc = 'dashboard workspace variants',
+              })
+            end
           end
         end
       end
@@ -368,7 +333,6 @@ return {
       vim.fn.writefile(vim.split(source, '\n'), cache_path)
     end
 
-    local dashboard_cache = vim.fn.stdpath('cache') .. '/dashboard/cache'
     local display_projects = get_display_projects()
     if #display_projects > 0 then
       write_dashboard_projects(dashboard_cache, reverse_copy(display_projects))
@@ -390,11 +354,18 @@ return {
         key = 'q',
       },
       {
-        icon = ' ',
+        icon = ' ',
         desc = ' Jump Projects',
         group = 'DiagnosticInfo',
         action = open_project_jump_picker,
         key = 'p',
+      },
+      {
+        icon = '󰈞 ',
+        desc = ' All incl. archived',
+        group = 'DiagnosticInfo',
+        action = open_project_archived_picker,
+        key = 'P',
       },
     }
 
@@ -456,7 +427,8 @@ return {
       shuffle_letter = false,
       -- 'l', 'q' and 'p' removed: they belong to the shortcuts above, and
       -- keeping them out of the entry-letter pool guarantees entry rows can
-      -- never shadow the [l]/[q]/[p] maps.
+      -- never shadow the [l]/[q]/[p]/[P] maps ('P' is uppercase so it never
+      -- collides with the lowercase-only pool anyway).
       letter_list = 'asdfqwertyuiozxcvbnmghjk',
       config = {
         shortcuts_left_side = true,
@@ -467,7 +439,7 @@ return {
         shortcut = shortcuts,
         project = {
           enable = true,
-          limit = jump_limit + default_recent_limit,
+          limit = dp.PANEL_LIMIT,
           icon = ' ',
           label = ' Recent Projects:',
           action = cd_and_open_recent_file,
@@ -481,6 +453,7 @@ return {
         },
         footer = {
           '',
+          'S-<letter> workspace variants · [P] all projects incl. archived',
           'Keep shipping.',
         },
       },
@@ -490,12 +463,19 @@ return {
       pattern = 'DashboardLoaded',
       group = vim.api.nvim_create_augroup('dashboard-custom-restyle', { clear = true }),
       callback = function(args)
+        -- Refresh the panel list for the NEXT open (usage/archive state may
+        -- have changed this session); the current render already read the
+        -- file, so this render keeps showing it until the next :Dashboard.
+        local refreshed = get_display_projects()
+        if #refreshed > 0 then
+          write_dashboard_projects(dashboard_cache, reverse_copy(refreshed))
+        end
         vim.schedule(function()
           if vim.api.nvim_buf_is_valid(args.buf) then
             -- Re-bind the shortcut keys with the live actions first: on a
             -- re-opened :Dashboard the plugin has restored the shortcut
             -- actions from string.dump bytecode with nil upvalues, so its
-            -- own [p] binding is broken until we override it here.
+            -- own [p]/[P] bindings are broken until we override them here.
             rebind_shortcut_keys(args.buf)
             restyle_dashboard_entries(args.buf)
           end
