@@ -1,0 +1,21 @@
+{% if system_tools.jj or features.jj | default('false') == 'true' %}
+-- jj conflict mappings. Same leader family as the git plugin
+-- (mappings/git-conflict.lua.j2, gated off in jj mode) so muscle memory
+-- transfers: gcr refresh, gcl/gcL lists, gco/gcb/gcn/gct choose, gcd
+-- dropdown, ]x/[x jump between conflicts.
+vim.keymap.set("n", "<leader>gcr", ":JJConflictRefresh<CR>", { desc = "Rescan jj conflicts" })
+vim.keymap.set("n", "<leader>gcl", ":JJConflictListQf<CR>", { desc = "Show jj conflict list" })
+vim.keymap.set("n", "<leader>gcL", ":JJConflictListAll<CR>", { desc = "Show jj conflict list (all files)" })
+vim.keymap.set("n", "<leader>gcd", ":JJConflictDropdown<CR>", { desc = "Pick jj conflict from dropdown" })
+vim.keymap.set("n", "<leader>gco", ":JJConflictChooseOurs<CR>", { desc = "Resolve jj conflict keeping ours" })
+vim.keymap.set("n", "<leader>gcb", ":JJConflictChooseBoth<CR>", { desc = "Resolve jj conflict keeping both" })
+vim.keymap.set("n", "<leader>gcn", ":JJConflictChooseNone<CR>", { desc = "Resolve jj conflict keeping none" })
+vim.keymap.set("n", "<leader>gct", ":JJConflictChooseTheirs<CR>", { desc = "Resolve jj conflict keeping theirs" })
+vim.keymap.set("n", "<leader>gc1", ":1JJConflictChooseSide<CR>", { desc = "Resolve jj conflict keeping side 1" })
+vim.keymap.set("n", "<leader>gc2", ":2JJConflictChooseSide<CR>", { desc = "Resolve jj conflict keeping side 2" })
+vim.keymap.set("n", "<leader>gc3", ":3JJConflictChooseSide<CR>", { desc = "Resolve jj conflict keeping side 3" })
+vim.keymap.set("n", "<leader>gc4", ":4JJConflictChooseSide<CR>", { desc = "Resolve jj conflict keeping side 4" })
+vim.keymap.set("n", "<leader>gc5", ":5JJConflictChooseSide<CR>", { desc = "Resolve jj conflict keeping side 5" })
+vim.keymap.set("n", "]x", ":JJConflictNext<CR>", { desc = "Next jj conflict" })
+vim.keymap.set("n", "[x", ":JJConflictPrev<CR>", { desc = "Previous jj conflict" })
+{% endif %}
