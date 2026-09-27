@@ -82,6 +82,57 @@ return {
       return dp.picker_entries(collect_candidates(), include_archived)
     end
 
+    local function open_workspace_list(members)
+      local items = {}
+      for _, m in ipairs(members or {}) do
+        table.insert(items, {
+          path = m.path,
+          label = vim.fn.fnamemodify(m.path, ':~') .. ' (' .. dp.rel_age(m.usage) .. ')',
+        })
+      end
+      if #items == 0 then
+        return
+      end
+      vim.ui.select(items, {
+        prompt = 'Workspace:',
+        format_item = function(item)
+          return item.label
+        end,
+      }, function(choice)
+        if choice then
+          cd_and_open_recent_file(choice.path)
+        end
+      end)
+    end
+
+    local function open_workspace_selector(target)
+      local members = (target and target.variants) or {}
+      if #members == 0 then
+        return
+      end
+      open_workspace_list(members)
+    end
+
+    -- Picker C-w: probe the hovered path live for sibling workspaces.
+    local function open_workspaces_for_path(path)
+      local set = dp.probe_workspaces(path)
+      if not set then
+        vim.notify('No other workspaces for ' .. vim.fn.fnamemodify(path, ':~'), vim.log.levels.INFO)
+        return
+      end
+      local members = {}
+      for _, m in ipairs(set) do
+        table.insert(members, { path = m, usage = project_usage[m] or 0 })
+      end
+      table.sort(members, function(a, b)
+        if a.usage ~= b.usage then
+          return a.usage > b.usage
+        end
+        return a.path < b.path
+      end)
+      open_workspace_list(members)
+    end
+
     local function open_project_picker(entries, title, empty_msg)
       local ok_pickers, pickers = pcall(require, 'telescope.pickers')
       local ok_finders, finders = pcall(require, 'telescope.finders')
@@ -112,7 +163,7 @@ return {
           end,
         },
         sorter = conf.values.generic_sorter({}),
-        attach_mappings = function(prompt_bufnr)
+        attach_mappings = function(prompt_bufnr, map)
           actions.select_default:replace(function()
             local selection = action_state.get_selected_entry()
             actions.close(prompt_bufnr)
@@ -120,6 +171,15 @@ return {
               cd_and_open_recent_file(selection.value)
             end
           end)
+          local function open_hovered_workspaces()
+            local selection = action_state.get_selected_entry()
+            actions.close(prompt_bufnr)
+            if selection and selection.value then
+              open_workspaces_for_path(selection.value)
+            end
+          end
+          map('i', '<C-w>', open_hovered_workspaces)
+          map('n', '<C-w>', open_hovered_workspaces)
           return true
         end,
       }):find()
@@ -128,7 +188,7 @@ return {
     local function open_project_jump_picker()
       open_project_picker(
         get_picker_entries(false),
-        'Jump + Recent Projects',
+        'Jump + Recent Projects (C-w lists workspaces)',
         'No jump/recent projects found'
       )
     end
@@ -136,33 +196,9 @@ return {
     local function open_project_archived_picker()
       open_project_picker(
         get_picker_entries(true),
-        'All Projects (incl. archived)',
+        'All Projects incl. archived (C-w lists workspaces)',
         'No projects found'
       )
-    end
-
-    local function open_workspace_selector(target)
-      local members = (target and target.variants) or {}
-      if #members == 0 then
-        return
-      end
-      local items = {}
-      for _, m in ipairs(members) do
-        table.insert(items, {
-          path = m.path,
-          label = vim.fn.fnamemodify(m.path, ':~') .. ' (' .. dp.rel_age(m.usage) .. ')',
-        })
-      end
-      vim.ui.select(items, {
-        prompt = 'Workspace:',
-        format_item = function(item)
-          return item.label
-        end,
-      }, function(choice)
-        if choice then
-          cd_and_open_recent_file(choice.path)
-        end
-      end)
     end
 
     local function split_leaf_and_parent(path)
@@ -360,13 +396,6 @@ return {
         action = open_project_jump_picker,
         key = 'p',
       },
-      {
-        icon = '󰈞 ',
-        desc = ' All incl. archived',
-        group = 'DiagnosticInfo',
-        action = open_project_archived_picker,
-        key = 'P',
-      },
     }
 
     -- Mark the shortcut keys as reserved for restyle_dashboard_entries and
@@ -374,18 +403,23 @@ return {
     for _, item in ipairs(shortcuts) do
       reserved_shortcut_keys[item.key] = true
     end
+    -- [P] stays out of the top shortcuts row (the footer legend already
+    -- documents it) but keeps working: reserve the key and re-bind it live
+    -- like the visible shortcuts.
+    reserved_shortcut_keys['P'] = true
 
     -- dashboard-nvim persists its config when the last dashboard buffer
     -- closes (cache_opts): function shortcut actions are string.dump-ed to
     -- the cache, and the next :Dashboard in the same instance restores them
     -- from bytecode (get_opts). Restored closures lose their upvalues, so
-    -- the [p] Jump Projects action dies with "attempt to call a nil value
+    -- the [p]/[P] actions die with "attempt to call a nil value
     -- (upvalue ...)". Snapshot the live actions here and re-bind them on
     -- every render so the shortcuts survive the cache round-trip.
     local shortcut_actions = {}
     for _, item in ipairs(shortcuts) do
       shortcut_actions[item.key] = item.action
     end
+    shortcut_actions['P'] = open_project_archived_picker
 
     local function rebind_shortcut_keys(bufnr)
       for key, action in pairs(shortcut_actions) do
