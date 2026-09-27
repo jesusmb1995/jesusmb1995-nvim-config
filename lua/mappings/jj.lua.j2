@@ -1288,8 +1288,10 @@ map("n", "<leader>Gd", function()
             picker:close()
             _jj_in_root(gd_root, function()
               require("lazy").load({ plugins = { "jj.nvim" } })
-              local ok, msg = pcall(runner.execute_command, "jj restore --ignore-working-copy --from " .. vim.fn.shellescape(rev) .. " --to @ 2>&1", "Restore failed", nil, false)
-              if ok then
+              local _, restore_ok = runner.execute_command("jj restore --ignore-working-copy --from " .. vim.fn.shellescape(rev) .. " --to @ 2>&1", "Restore failed", nil, false)
+              if restore_ok then
+                -- No-op unless the working copy went stale; keeps the IDE view fresh.
+                runner.execute_command("jj workspace update-stale 2>&1", nil, nil, true)
                 vim.notify("Restored @ content from " .. rev, vim.log.levels.INFO, { title = "JJ" })
                 if require("jj.ui.terminal").is_log_buffer_open() then require("jj.cmd").log({}) end
               end
