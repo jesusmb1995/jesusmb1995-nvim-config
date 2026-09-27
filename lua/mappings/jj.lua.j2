@@ -1199,30 +1199,99 @@ map("n", "<leader>Gd", function()
     local runner = require("jj.core.runner")
     local cur = vim.trim(runner.execute_command("jj log --ignore-working-copy -r @ --no-graph -T 'commit_id.shortest(8)' 2>/dev/null", nil, nil, true) or "")
     local out = runner.execute_command("jj evolog --ignore-working-copy -r @ --no-graph -T 'commit.commit_id().shortest(8) ++ \"\\t\" ++ commit.committer().timestamp().format(\"%Y-%m-%d %H:%M\") ++ \"\\t\" ++ commit.description().first_line() ++ \"\\n\"' 2>/dev/null", nil, nil, true) or ""
-    local items = {}
-    for _, line in ipairs(vim.split(out, "\n")) do
-      line = vim.trim(line)
-      if line ~= "" then
-        local cid, ts, desc = line:match("^([^\t]+)\t([^\t]+)\t(.*)$")
-        cid = cid or line
-        ts = ts or ""
-        -- Exclude current @ itself (diff @..@ would be empty).
-        if vim.trim(cid) ~= cur then
-          table.insert(items, { rev = vim.trim(cid), label = vim.trim(cid) .. " " .. vim.trim(ts) .. " " .. vim.trim(desc or "") })
-        end
-      end
+    -- Explicit cd: the picker preview/confirm fire after _with_jj_repo
+    -- restores cwd, so every jj call below is repo-pinned. Single-quoted -T:
+    -- container sh is dash (see _jj_capture).
+    local cd = "cd " .. vim.fn.shellescape(gd_root) .. " && "
+    local function gd_diff_stat(rev)
+      return runner.execute_command(cd .. "jj diff --ignore-working-copy --from " .. vim.fn.shellescape(rev) .. " --to @ --stat 2>/dev/null", nil, nil, true) or ""
     end
-    if #items == 0 then vim.notify("No earlier versions of @ yet (evolog empty)", vim.log.levels.WARN) return end
-    vim.ui.select(items, { prompt = "Evolog @ (pick older version, diff vs current):", format_item = function(i) return i.label end }, function(choice)
-      _jj_in_root(gd_root, function()
-      if not choice then return end
-      local from = vim.trim(choice.rev)
+    local function gd_stat_suffix(rev)
+      local stat = gd_diff_stat(rev)
+      local a = stat:match("(%d+) insertions?%(%+%)")
+      local d = stat:match("(%d+) deletions?%(%-%)")
+      local f = stat:match("(%d+) files? changed")
+      local parts = {}
+      if a and tonumber(a) ~= 0 then table.insert(parts, "+" .. a) end
+      if d and tonumber(d) ~= 0 then table.insert(parts, "-" .. d) end
+      if f and tonumber(f) ~= 0 then table.insert(parts, "~" .. f) end
+      if #parts == 0 then return "" end
+      return " (" .. table.concat(parts, " ") .. ")"
+    end
+    -- Preview for the hovered entry: stat summary plus the diff of the
+    -- biggest file (most diff lines), truncated. Recomputed per hover.
+    local function gd_preview_lines(rev)
+      local stat = vim.trim(gd_diff_stat(rev))
+      if stat == "" then return { "(no changes vs @)" } end
+      local lines = {}
+      for _, l in ipairs(vim.split(stat, "\n")) do
+        if l ~= "" then table.insert(lines, l) end
+      end
+      local diff = runner.execute_command(cd .. "jj diff --ignore-working-copy --from " .. vim.fn.shellescape(rev) .. " --to @ --git 2>/dev/null", nil, nil, true) or ""
+      local best, best_path, best_n, cur_path, cur_lines = nil, nil, 0, nil, {}
+      local function flush()
+        if cur_path and #cur_lines > best_n then best, best_path, best_n = cur_lines, cur_path, #cur_lines end
+      end
+      for _, l in ipairs(vim.split(diff, "\n")) do
+        local b = l:match("^diff %-%-git a/.* b/(.*)$")
+        if b then flush() cur_path, cur_lines = b, {}
+        elseif cur_path then table.insert(cur_lines, l) end
+      end
+      flush()
+      table.insert(lines, "")
+      if best_path then
+        table.insert(lines, "=== " .. best_path .. " (largest changed file) ===")
+        for i = 1, math.min(#best, 80) do table.insert(lines, best[i]) end
+        if #best > 80 then table.insert(lines, "... (" .. (#best - 80) .. " more lines — pick entry for full diffview)") end
+      end
+      return lines
+    end
+    local function gd_open_diffview(from)
       _jj_in_root(gd_root, function()
         require("lazy").load({ plugins = { "jj.nvim" } })
         -- Same view as multi-select D in <leader>gl log: diffview in a new tab.
         require("jj.diff").diff_revisions({ left = from, right = "@" })
       end)
-      end)
+    end
+    local items = {}
+    for _, line in ipairs(vim.split(out, "\n")) do
+      line = vim.trim(line)
+      if line ~= "" then
+        -- Split, don't 3-part match: empty descriptions lose their trailing
+        -- tab to vim.trim above, leaving a single tab behind.
+        local parts = vim.split(line, "\t", { plain = true })
+        local cid, ts, desc = parts[1] or line, parts[2] or "", parts[3] or ""
+        -- Exclude current @ itself (diff @..@ would be empty).
+        if vim.trim(cid) ~= cur then
+          local rev = vim.trim(cid)
+          table.insert(items, { rev = rev, text = rev .. " " .. vim.trim(ts) .. " " .. vim.trim(desc or "") .. gd_stat_suffix(rev) })
+        end
+      end
+    end
+    if #items == 0 then vim.notify("No earlier versions of @ yet (evolog empty)", vim.log.levels.WARN) return end
+    local ok_snacks = pcall(require("lazy").load, { plugins = { "snacks.nvim" } })
+    local ok_picker, Snacks = pcall(require, "snacks")
+    if ok_snacks and ok_picker and Snacks.picker then
+      Snacks.picker.pick({
+        title = "Evolog @ (diff vs current)",
+        items = items,
+        preview = function(ctx)
+          if not ctx.item or not ctx.item.rev then return false end
+          ctx.preview:set_lines(gd_preview_lines(ctx.item.rev))
+          ctx.preview:highlight({ ft = "diff" })
+          return true
+        end,
+        confirm = function(picker, item)
+          if not item then return end
+          picker:close()
+          gd_open_diffview(vim.trim(item.rev))
+        end,
+      })
+      return
+    end
+    vim.ui.select(items, { prompt = "Evolog @ (pick older version, diff vs current):", format_item = function(i) return i.text end }, function(choice)
+      if not choice then return end
+      gd_open_diffview(vim.trim(choice.rev))
     end)
   end)
 end, { desc = "jj evolog @ (pick version, diff vs current, diffview tab)" })
