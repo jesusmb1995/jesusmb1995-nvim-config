@@ -25,8 +25,14 @@ M.base46 = {
 local _jj_cache = { at = 0, dir = nil, text = "" }
 local function _jj_status_text(dir)
   local pre = "cd " .. vim.fn.shellescape(dir) .. " && "
-  local rev = vim.trim(vim.fn.system(pre .. "jj log --no-graph -r @ -T 'change_id.shortest(8)' 2>/dev/null") or "")
-  if rev == "" or vim.v.shell_error ~= 0 then return "" end
+  local info = vim.fn.system(pre .. "jj log --no-graph -r @ -T 'change_id.shortest(2) ++ \"\\t\" ++ description.first_line() ++ \"\\n\"' 2>/dev/null") or ""
+  if vim.v.shell_error ~= 0 then return "" end
+  local rev, desc = vim.trim(info):match("^([^\t]*)\t?(.*)$")
+  if not rev or rev == "" then return "" end
+  -- Human text: part after the first colon ("fix: blah" -> "blah"), truncated.
+  local short = desc:match("^[^:]*:%s*(.+)$") or desc
+  short = vim.trim(short)
+  if #short > 40 then short = short:sub(1, 37) .. "..." end
   local stat = vim.fn.system(pre .. "jj diff --stat -r @ 2>/dev/null") or ""
   local added, removed, files = 0, 0, 0
   for line in stat:gmatch("[^\n]+") do
@@ -41,6 +47,7 @@ local function _jj_status_text(dir)
   local nfiles = stat:match("(%d+) files? changed")
   if nfiles then files = tonumber(nfiles) or 0 end
   local text = " @" .. rev
+  if short ~= "" then text = text .. " " .. short end
   if added ~= 0 then text = text .. "  " .. added end
   if files ~= 0 then text = text .. "  " .. files end
   if removed ~= 0 then text = text .. "  " .. removed end
