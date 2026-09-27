@@ -1275,6 +1275,9 @@ map("n", "<leader>Gd", function()
       Snacks.picker.pick({
         title = "Evolog @ (diff vs current)",
         items = items,
+        -- Default format is the file formatter (blank rows for text-only
+        -- items); use the text formatter so id/time/desc show.
+        format = "text",
         preview = function(ctx)
           if not ctx.item or not ctx.item.rev then return false end
           ctx.preview:set_lines(gd_preview_lines(ctx.item.rev))
