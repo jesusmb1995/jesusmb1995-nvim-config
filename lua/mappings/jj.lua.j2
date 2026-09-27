@@ -133,7 +133,7 @@ end
 
 local function _jj_capture(runner, revset, template)
   local out = runner.execute_command(
-    "jj log --ignore-working-copy -r " .. vim.fn.shellescape(revset) .. " --no-graph -T " .. vim.fn.shellescape(template) .. " 2>/dev/null",
+    "jj log --ignore-working-copy -r " .. vim.fn.shellescape(revset) .. " --no-graph -T '" .. template .. "' 2>/dev/null",
     nil, nil, true)
   return vim.trim(out or "")
 end
@@ -295,7 +295,7 @@ local function _jj_log_quick_squash_keep_msg(jj_root_cap)
     return
   end
   local runner = require("jj.core.runner")
-  local parents = _jj_capture(runner, "parents(" .. rev .. ")", "change_id.shortest(8) ++ '\\n'")
+  local parents = _jj_capture(runner, "parents(" .. rev .. ")", "change_id.shortest(8) ++ \"\\n\"")
   local plist = {}
   for _, l in ipairs(vim.split(parents, "\n")) do
     l = vim.trim(l)
@@ -316,7 +316,6 @@ local function _jj_log_quick_squash_keep_msg(jj_root_cap)
         require("jj.utils").notify("Squashed " .. rev .. " into " .. parent .. " (message kept)", vim.log.levels.INFO)
         require("jj.cmd").log({})
         _jj_log_panel_setup()
-        _jj_edit_desc_later(parent)
       end)
     end, "Error squashing " .. rev)
 end
@@ -488,6 +487,22 @@ function _jj_log_panel_setup(buf, center)
     require("jj.cmd.log").handle_log_squash()
     assert_our_cr()
   end, { buffer = buf, silent = true, nowait = true, desc = "Squash (keep-msg execute)" })
+  vim.keymap.set({ "n", "x" }, "<leader>l", function()
+    local agent_term = require("mappings.agent-term")
+    local lines
+    -- During an x-mode mapping mode() reports v/V/^V (never "x"), so match
+    -- the whole visual family.
+    if vim.api.nvim_get_mode().mode:match("^[vVx\22]") then
+      local s = vim.fn.line("v")
+      local e = vim.fn.line(".")
+      if s > e then s, e = e, s end
+      lines = vim.api.nvim_buf_get_lines(buf, s - 1, e, false)
+      vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "x", false)
+    else
+      lines = vim.api.nvim_buf_get_lines(buf, vim.fn.line(".") - 1, vim.fn.line("."), false)
+    end
+    agent_term.send_to_agent(table.concat(lines, "\n") .. "\n")
+  end, { buffer = buf, silent = true, nowait = true, desc = "Send selection to agent terminal (leader+l)" })
 end
 
 -- grs (editor after) / grS (instant): squash @ into parent in a horizontal
@@ -1183,16 +1198,17 @@ map("n", "<leader>Gd", function()
     require("lazy").load({ plugins = { "jj.nvim" } })
     local runner = require("jj.core.runner")
     local cur = vim.trim(runner.execute_command("jj log --ignore-working-copy -r @ --no-graph -T 'commit_id.shortest(8)' 2>/dev/null", nil, nil, true) or "")
-    local out = runner.execute_command("jj evolog --ignore-working-copy -r @ --no-graph -T 'commit.commit_id().shortest(8) ++ \"\\t\" ++ commit.description().first_line() ++ \"\\n\"' 2>/dev/null", nil, nil, true) or ""
+    local out = runner.execute_command("jj evolog --ignore-working-copy -r @ --no-graph -T 'commit.commit_id().shortest(8) ++ \"\\t\" ++ commit.committer().timestamp().format(\"%Y-%m-%d %H:%M\") ++ \"\\t\" ++ commit.description().first_line() ++ \"\\n\"' 2>/dev/null", nil, nil, true) or ""
     local items = {}
     for _, line in ipairs(vim.split(out, "\n")) do
       line = vim.trim(line)
       if line ~= "" then
-        local cid, desc = line:match("^([^\t]+)\t(.*)$")
+        local cid, ts, desc = line:match("^([^\t]+)\t([^\t]+)\t(.*)$")
         cid = cid or line
+        ts = ts or ""
         -- Exclude current @ itself (diff @..@ would be empty).
         if vim.trim(cid) ~= cur then
-          table.insert(items, { rev = vim.trim(cid), label = vim.trim(cid) .. " " .. vim.trim(desc or "") })
+          table.insert(items, { rev = vim.trim(cid), label = vim.trim(cid) .. " " .. vim.trim(ts) .. " " .. vim.trim(desc or "") })
         end
       end
     end

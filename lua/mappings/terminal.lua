@@ -454,7 +454,7 @@ vim.api.nvim_create_autocmd("TermOpen", {
       if mode == "t" then
         vim.keymap.set("t", " ", " ", { buffer = buf, nowait = true })
       else
-        vim.keymap.del("t", " ", { buffer = buf })
+        pcall(vim.keymap.del, "t", " ", { buffer = buf })
       end
     end
     vim.api.nvim_create_autocmd("ModeChanged", {
