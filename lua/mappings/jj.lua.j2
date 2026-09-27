@@ -1273,11 +1273,29 @@ map("n", "<leader>Gd", function()
     local ok_picker, Snacks = pcall(require, "snacks")
     if ok_snacks and ok_picker and Snacks.picker then
       Snacks.picker.pick({
-        title = "Evolog @ (diff vs current)",
+        title = "Evolog @ — <C-r> restores hovered version into @",
         items = items,
         -- Default format is the file formatter (blank rows for text-only
         -- items); use the text formatter so id/time/desc show.
         format = "text",
+        win = { input = { keys = { ["<c-r>"] = { "gd_restore", mode = { "n", "i" } } } } },
+        actions = {
+          gd_restore = function(picker)
+            local item = picker:current()
+            if not item or not item.rev then return end
+            local rev = vim.trim(item.rev)
+            if vim.fn.confirm("Restore @ content from " .. rev .. "? (undo: <leader>gu)", "&Yes\n&No", 2) ~= 1 then return end
+            picker:close()
+            _jj_in_root(gd_root, function()
+              require("lazy").load({ plugins = { "jj.nvim" } })
+              local ok, msg = pcall(runner.execute_command, "jj restore --ignore-working-copy --from " .. vim.fn.shellescape(rev) .. " --to @ 2>&1", "Restore failed", nil, false)
+              if ok then
+                vim.notify("Restored @ content from " .. rev, vim.log.levels.INFO, { title = "JJ" })
+                if require("jj.ui.terminal").is_log_buffer_open() then require("jj.cmd").log({}) end
+              end
+            end)
+          end,
+        },
         preview = function(ctx)
           if not ctx.item or not ctx.item.rev then return false end
           ctx.preview:set_lines(gd_preview_lines(ctx.item.rev))
