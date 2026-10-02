@@ -139,6 +139,7 @@ Select python venv cached from directory | <leader>Vc
 Open diffview against previous commit | <leader>gd
 Open diffview against main branch | <leader>gD
 Open diffview against previous commit | :DiffviewOpen HEAD^
+Lint only changed lines (on any diffview tab) | <leader>xx on diffview
 Activate git conflict plugin | :GitConflictRefresh
 Show git conflict list | :GitConflictListQf
 Activate git conflict plugin | <leader>gcr
@@ -275,6 +276,7 @@ Ponytail review / whole-repo audit / debt ledger / impact board / help | /ponyta
 ### Patch and commit
 Per-patch changes | /per_patch
 Fixup as child patch, user squashes later | /per_patch_fixups
+Work on top of current @, keep @ intact | /ontop
 Stage, commit / commit and push | /commit / /commit-push
 Stg top-patch msg / strip comments / whole-stack msgs | /stg-last-patch-description / /stg-last-patch-nonverbosecomments / /stg-series-descriptions
 Test-first, repro before fix | /tdd
@@ -299,6 +301,20 @@ Daily progress report | /progress-report
 Work in another workspace | /jjws
 Parallel agents, one workspace each | /jj-parallel-workspaces
 Forget stale agent workspaces | /jj-workspace-cleanup
+Dry-run cleanup of old workspaces, confirm first | /cleanup-old-workspaces
+### Verify and approve
+Last answer true? check URLs, logs, code | /facts
+Safe to stamp for client? blast radius first | /ask-if-safe-to-approve-for-client
+### Guide
+Step-by-step clicks, command if possible | /suggest-actions
+Read-only, no edits or mutable ops | /readonly
+Pick fitting skill and apply it directly | /use-fitting-skill
+### Learn and recall
+Save learning into a skill (confirm first) | /lessons-learned-edit-generic
+Find past convo, show resume command | /search-convos
+### Investigate
+Deep investigation, findings to file | /investigate
+Parse/search logs, traces, correlation | /log-analyzer
 ### Journal
 Read per-directory journal / write it | /journal-dir-read / /journal-dir-update
 ### Tasks from file
