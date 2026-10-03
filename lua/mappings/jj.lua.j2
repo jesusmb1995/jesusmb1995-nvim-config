@@ -587,10 +587,10 @@ local function _jj_divergent_groups()
 end
 -- Forward declaration: defined below, used by the deferred pass here.
 local _jj_set_tab_side_labels
--- Label the sides of a freshly opened diffview tab: left window gets the
--- left rev, right window the right rev ([1]/[2] + short desc). Diffview
--- focuses its new tab on open, so a short deferred pass finds it.
-local function _jj_label_diffview_sides(left_rev, left_desc, right_rev, right_desc)
+-- Label the sides of a freshly opened diffview tab. Texts are prebuilt by
+-- the caller (role + /N number + rev + desc); the deferred pass locates the
+-- tab holding a DiffviewFiles panel instead of assuming focus.
+local function _jj_label_diffview_sides(left_text, right_text)
   -- Diffview focuses its new tab on open, but not reliably in every context;
   -- locate the tab holding a DiffviewFiles panel instead of assuming focus.
   vim.defer_fn(function()
@@ -608,12 +608,25 @@ local function _jj_label_diffview_sides(left_rev, left_desc, right_rev, right_de
     if not tab then
       return
     end
-    _jj_set_tab_side_labels(tab, left_rev, left_desc, right_rev, right_desc)
+    _jj_set_tab_side_labels(tab, left_text, right_text)
   end, 600)
 end
--- Shared winbar painter: leftmost file window gets the left rev, rightmost
--- the right rev. Skips tabs already labeled (re-runs stay idempotent).
-_jj_set_tab_side_labels = function(tab, left_rev, left_desc, right_rev, right_desc)
+-- Shorten a description for winbar display.
+local function _jj_short_desc(desc)
+  desc = vim.trim(desc or "")
+  if desc == "" then desc = "(no description)" end
+  if #desc > 50 then desc = desc:sub(1, 47) .. "..." end
+  return desc
+end
+-- Build the two winbar texts for a theirs(left)/ours(right) pair. Numbering
+-- is the position in the divergent list (same /N as the pickers + alias).
+local function _jj_side_texts(theirs_idx, theirs_rev, theirs_desc, ours_idx, ours_rev, ours_desc)
+  return "◀ theirs /" .. theirs_idx .. " " .. theirs_rev .. " " .. _jj_short_desc(theirs_desc),
+    "/" .. ours_idx .. " " .. ours_rev .. " " .. _jj_short_desc(ours_desc) .. " ▶ ours"
+end
+-- Shared winbar painter: leftmost file window gets the left text, rightmost
+-- the right text. Skips tabs already labeled (re-runs stay idempotent).
+_jj_set_tab_side_labels = function(tab, left_text, right_text)
   local wins = {}
   for _, w in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do
     local buf = vim.api.nvim_win_get_buf(w)
@@ -629,14 +642,8 @@ _jj_set_tab_side_labels = function(tab, left_rev, left_desc, right_rev, right_de
     return false
   end
   table.sort(wins, function(a, b) return a.col < b.col end)
-  local function short(desc)
-    desc = vim.trim(desc or "")
-    if desc == "" then desc = "(no description)" end
-    if #desc > 50 then desc = desc:sub(1, 47) .. "..." end
-    return desc
-  end
-  vim.wo[wins[1].win].winbar = "◀ [1] " .. left_rev .. " " .. short(left_desc)
-  vim.wo[wins[#wins].win].winbar = "[2] " .. right_rev .. " " .. short(right_desc) .. " ▶"
+  vim.wo[wins[1].win].winbar = left_text
+  vim.wo[wins[#wins].win].winbar = right_text
   return true
 end
 -- Label every still-unlabeled diffview tab whose rev pair matches a known
@@ -678,21 +685,57 @@ local function _jj_label_matching_diffview_tabs(pair_labels)
         end
       end
       if info then
-        _jj_set_tab_side_labels(tab, info[1], info[2], info[3], info[4])
+        _jj_set_tab_side_labels(tab, info[1], info[2])
       end
     end
   end
 end
-local function _jj_diff_divergent_group(gd_root, g)
-  -- Always the two most recent versions (jj log lists newest first); no
-  -- picker — gDv already shows every group, gdv targets one change.
-  local left, right = g.commits[1], g.commits[2]
-  local ldesc, rdesc = g.descs[1] or "", g.descs[2] or ""
+-- Split a divergent group into (theirs, ours) for diff direction: ours is
+-- the version matching @'s commit (so `-` reads as theirs-only and `+` as
+-- ours); theirs is the most recent other version. Numbers are positions in
+-- the group list (same /N as pickers + alias). Groups without @ fall back
+-- to newest-first with neutral numbering.
+local function _jj_ours_theirs(g, at_commit)
+  local ours = nil
+  if at_commit and at_commit ~= "" then
+    for i, cid in ipairs(g.commits) do
+      if at_commit:sub(1, #cid) == cid then
+        ours = i
+        break
+      end
+    end
+  end
+  if not ours then
+    return 1, 2, false
+  end
+  for i in ipairs(g.commits) do
+    if i ~= ours then
+      return i, ours, true
+    end
+  end
+  return 1, ours, true
+end
+-- Neutral [1]/[2] texts for groups with no @ version (no ours to anchor).
+local function _jj_index_texts(i, rev, idesc, j, rev2, jdesc)
+  return "◀ [" .. i .. "] " .. rev .. " " .. _jj_short_desc(idesc),
+    "[" .. j .. "] " .. rev2 .. " " .. _jj_short_desc(jdesc) .. " ▶"
+end
+local function _jj_diff_divergent_group(gd_root, g, at_commit)
+  -- No picker — gDv already shows every group, gdv targets one change.
+  local ti, oi, anchored = _jj_ours_theirs(g, at_commit)
+  local left, right = g.commits[ti], g.commits[oi]
+  local ltext, rtext
+  if anchored then
+    ltext, rtext = _jj_side_texts(ti, left, g.descs[ti] or "", oi, right, g.descs[oi] or "")
+  else
+    ltext, rtext = _jj_index_texts(ti, left, g.descs[ti] or "", oi, right, g.descs[oi] or "")
+  end
   _jj_in_root(gd_root, function()
     require("lazy").load({ plugins = { "jj.nvim" } })
     require("jj.diff").diff_revisions({ left = left, right = right })
-    _jj_label_diffview_sides(left, ldesc, right, rdesc)
+    _jj_label_diffview_sides(ltext, rtext)
   end)
+  return left, right, ltext, rtext
 end
 map("n", "<leader>gdv", function()
   local gd_root = _find_jj_root() or vim.fn.getcwd()
@@ -700,9 +743,10 @@ map("n", "<leader>gdv", function()
     require("lazy").load({ plugins = { "jj.nvim" } })
     local runner = require("jj.core.runner")
     local cur = vim.trim(runner.execute_command("jj log --ignore-working-copy -r @ --no-graph -T 'change_id.shortest(8)' 2>/dev/null", nil, nil, true) or "")
+    local at_commit = vim.trim(runner.execute_command("jj log --ignore-working-copy -r @ --no-graph -T 'commit_id' 2>/dev/null", nil, nil, true) or "")
     for _, g in ipairs(_jj_divergent_groups()) do
       if g.change == cur then
-        _jj_diff_divergent_group(gd_root, g)
+        _jj_diff_divergent_group(gd_root, g, at_commit)
         return
       end
     end
@@ -713,14 +757,23 @@ map("n", "<leader>gDv", function()
   local gd_root = _find_jj_root() or vim.fn.getcwd()
   _with_jj_repo(function()
     require("lazy").load({ plugins = { "jj.nvim" } })
+    local runner = require("jj.core.runner")
+    local at_commit = vim.trim(runner.execute_command("jj log --ignore-working-copy -r @ --no-graph -T 'commit_id' 2>/dev/null", nil, nil, true) or "")
     local groups = _jj_divergent_groups()
     if #groups == 0 then vim.notify("No divergent changes on the stack", vim.log.levels.INFO) return end
     -- One diffview tab per group (same UI as gdv); a single deferred pass
     -- labels every still-unlabeled diffview tab by matching its rev pair.
     local pair_labels = {}
     for _, g in ipairs(groups) do
-      local left, right = g.commits[1], g.commits[2]
-      pair_labels[left .. ".." .. right] = { left, g.descs[1] or "", right, g.descs[2] or "" }
+      local ti, oi, anchored = _jj_ours_theirs(g, at_commit)
+      local left, right = g.commits[ti], g.commits[oi]
+      local ltext, rtext
+      if anchored then
+        ltext, rtext = _jj_side_texts(ti, left, g.descs[ti] or "", oi, right, g.descs[oi] or "")
+      else
+        ltext, rtext = _jj_index_texts(ti, left, g.descs[ti] or "", oi, right, g.descs[oi] or "")
+      end
+      pair_labels[left .. ".." .. right] = { ltext, rtext }
       _jj_in_root(gd_root, function()
         require("lazy").load({ plugins = { "jj.nvim" } })
         require("jj.diff").diff_revisions({ left = left, right = right })
