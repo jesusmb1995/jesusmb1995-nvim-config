@@ -176,10 +176,12 @@ return {
   "RutaTang/quicknote.nvim",
   dependencies = { "nvim-lua/plenary.nvim" },
 cmd = { "QuickNote" },
-  -- eager: the sign marks must be there the moment a file is opened, and a
-  -- lazy plugin only installs its autocmds after the first <leader>q* keypress
-  -- — by which point BufReadPost has passed and the file stays unmarked.
-  lazy = false,
+  -- Lazy: loads on the first <leader>q* keypress (or :QuickNote). Sign marks
+  -- therefore cannot come from BufReadPost for that first buffer — it fired
+  -- long before the plugin existed — so config() ends by marking the current
+  -- buffer itself. Net effect: marks show up on the first q* press, and the
+  -- plugin costs nothing at startup.
+  lazy = true,
   enabled = function()
     return vim.env.NVIM_MINIMAL == nil
   end,
