@@ -18,6 +18,7 @@ test target (forced bazel test) | <C-t>
 run target (forced bazel run, overrides _test heuristic) | <C-g>
 auto test when target contains _test (plain Enter) | <CR> heuristic
 GoogleTest in current file (pick target + subtest filter) | <leader><A-T>
+GoogleTest subtests for hovered test target | <C-s> in targets picker
 ## Debugging
 coredumpctl list | list available core dumps
 coredumpctl debug <PID> | attach to specific core dump
