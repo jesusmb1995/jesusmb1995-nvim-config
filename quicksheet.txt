@@ -188,6 +188,11 @@ jj workspace forget | <leader>gwd
 jj evolog @ current patch only (pick version, diff vs current, diffview tab) | <leader>Gd
 jj diff FROM..TO arbitrary range (pick both, diffview tab) | <leader>GR
 jj op diff --from-op whole stack (grouped, diffview tab) | <leader>GD
+jj soft snapshot of whole stack (sqlite, ~/.cache/nvim/jj-snapshots) | <leader>Gsc
+jj snapshot diff: current patch vs snapshot | <leader>Gsd
+jj snapshot diff: whole stack tip-to-tip vs snapshot | <leader>GsD
+jj restore @ from picked snapshot — current patch only | <leader>Gsr
+jj restore @ from picked snapshot — whole stack | <leader>GsR
 ## jj log panel (<leader>gl) — hover line + press (legend also on panel winbar):
 quick squash into parent, keeps Includes squashed: msg | <S-s>
 edit commit (enter) | <CR>
