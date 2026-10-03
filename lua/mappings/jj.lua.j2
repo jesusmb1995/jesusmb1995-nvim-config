@@ -1953,13 +1953,18 @@ end
 
 local function _jj_snapshot_rows()
   local db = _jj_snapshot_db()
-  local out = _jj_sql(db, "SELECT id || char(31) || ts || char(31) || op || char(31) || replace(desc, char(10), ' ') || char(31) || tip FROM snapshots ORDER BY id DESC")
+  -- TAB is the field separator: this sqlite3 build renders char(31) as the
+  -- literal caret-notation "^_" instead of byte 31, so splitting on 0x1F
+  -- silently yields one field per row. char(9) is emitted raw.
+  -- n = newlines in stack via length(replace(x, "\n", "~~")) - length(x);
+  -- char(126)||char(126) avoids a literal '' (breaks shellescape round-trip).
+  local out = _jj_sql(db, "SELECT id || char(9) || ts || char(9) || op || char(9) || replace(replace(desc, char(10), ' '), char(9), ' ') || char(9) || tip || char(9) || (length(replace(stack, char(10), char(126)||char(126))) - length(stack)) FROM snapshots ORDER BY id DESC")
   if not out or vim.trim(out) == "" then return {} end
   local rows = {}
   for _, line in ipairs(vim.split(vim.trim(out), "\n")) do
-    if line ~= "" then
-      local p = vim.split(line, string.char(31), { plain = true })
-      table.insert(rows, { id = p[1], ts = p[2] or "", op = p[3] or "", desc = p[4] or "", tip = p[5] or "" })
+    if vim.trim(line) ~= "" then
+      local p = vim.split(vim.trim(line), "\t", { plain = true })
+      table.insert(rows, { id = p[1], ts = p[2] or "", op = p[3] or "", desc = p[4] or "", tip = p[5] or "", n = tonumber(p[6]) or 0 })
     end
   end
   return rows
@@ -1971,7 +1976,40 @@ local function _jj_snapshot_stack_for(row_id)
   return out or ""
 end
 
-local function _jj_snapshot_pick(title, on_pick)
+-- Gd-style diff preview: stat summary + largest changed file's hunks.
+local function _jj_snapshot_diff_preview(from)
+  local gd_root = _find_jj_root() or vim.fn.getcwd()
+  local runner = require("jj.core.runner")
+  local cd = "cd " .. vim.fn.shellescape(gd_root) .. " && "
+  local stat = vim.trim(runner.execute_command(cd .. "jj diff --ignore-working-copy --from " .. vim.fn.shellescape(from) .. " --to @ --stat 2>/dev/null", nil, nil, true) or "")
+  if stat == "" then return { "(no changes vs @ — snapshot tip equals current)" } end
+  local lines = {}
+  for _, l in ipairs(vim.split(stat, "\n")) do
+    if l ~= "" then table.insert(lines, l) end
+  end
+  local diff = runner.execute_command(cd .. "jj diff --ignore-working-copy --from " .. vim.fn.shellescape(from) .. " --to @ --git 2>/dev/null", nil, nil, true) or ""
+  local best, best_path, best_n, cur_path, cur_lines = nil, nil, 0, nil, {}
+  local function flush()
+    if cur_path and #cur_lines > best_n then best, best_path, best_n = cur_lines, cur_path, #cur_lines end
+  end
+  for _, l in ipairs(vim.split(diff, "\n")) do
+    local b = l:match("^diff %-%-git a/.* b/(.*)$")
+    if b then flush() cur_path, cur_lines = b, {}
+    elseif cur_path then table.insert(cur_lines, l) end
+  end
+  flush()
+  table.insert(lines, "")
+  if best_path then
+    table.insert(lines, "=== " .. best_path .. " (largest changed file) ===")
+    for i = 1, math.min(#best, 80) do table.insert(lines, best[i]) end
+    if #best > 80 then table.insert(lines, "... (" .. (#best - 80) .. " more lines — pick entry for full diffview)") end
+  end
+  return lines
+end
+
+-- resolve_from(row) -> sha to diff against @, or nil if N/A (GsD/GsR use
+-- the tip; Gsd/Gsr match the current change id inside the snapshot).
+local function _jj_snapshot_pick(title, on_pick, resolve_from)
   local gd_root = _find_jj_root() or vim.fn.getcwd()
   _with_jj_repo(function()
     require("lazy").load({ plugins = { "jj.nvim" } })
@@ -1979,7 +2017,9 @@ local function _jj_snapshot_pick(title, on_pick)
     if #rows == 0 then vim.notify("No snapshots yet — create one with <leader>Gsc", vim.log.levels.WARN) return end
     local items = {}
     for _, r in ipairs(rows) do
-      table.insert(items, { row = r, text = r.ts .. "  op " .. r.op .. "  " .. r.desc, id = r.id })
+      local suffix = " [" .. r.n .. " patch" .. (r.n == 1 and "" or "es") .. ", op " .. r.op
+      if r.desc ~= r.ts then suffix = suffix .. ", " .. r.ts end
+      table.insert(items, { row = r, from = resolve_from and resolve_from(r) or r.tip, text = r.desc .. suffix .. "]", id = r.id })
     end
     local ok_snacks = pcall(require("lazy").load, { plugins = { "snacks.nvim" } })
     local ok_picker, Snacks = pcall(require, "snacks")
@@ -1989,13 +2029,9 @@ local function _jj_snapshot_pick(title, on_pick)
         items = items,
         format = "text",
         preview = function(ctx)
-          if not ctx.item or not ctx.item.id then return false end
-          local stack = _jj_snapshot_stack_for(ctx.item.id)
-          local lines = { "snapshot op " .. (ctx.item.row and ctx.item.row.op or "") .. " ts " .. (ctx.item.row and ctx.item.row.ts or ""), "" }
-          for _, l in ipairs(vim.split(stack, "\n")) do
-            if vim.trim(l) ~= "" then table.insert(lines, l) end
-          end
-          ctx.preview:set_lines(lines)
+          if not ctx.item or not ctx.item.from then return false end
+          ctx.preview:set_lines(_jj_snapshot_diff_preview(ctx.item.from))
+          ctx.preview:highlight({ ft = "diff" })
           return true
         end,
         confirm = function(picker, item)
@@ -2026,12 +2062,17 @@ map("n", "<leader>Gsc", function()
       vim.notify("Could not read current op/stack", vim.log.levels.WARN)
       return
     end
-    local db = _jj_snapshot_db()
-    _jj_sql(db, "CREATE TABLE IF NOT EXISTS snapshots(id INTEGER PRIMARY KEY AUTOINCREMENT, op TEXT, ts TEXT, desc TEXT, tip TEXT, stack TEXT)")
-    _jj_sql(db, "INSERT INTO snapshots(op, ts, desc, tip, stack) VALUES(" .. _jj_sql_q(op) .. ", " .. _jj_sql_q(os.date("%Y-%m-%d %H:%M")) .. ", " .. _jj_sql_q(op_desc) .. ", " .. _jj_sql_q(tip) .. ", " .. _jj_sql_q(stack) .. ")")
     local n = 0
     for _, l in ipairs(vim.split(stack, "\n")) do if vim.trim(l) ~= "" then n = n + 1 end end
-    vim.notify("Snapshot saved: op " .. op .. ", " .. n .. " patch(es) → " .. db, vim.log.levels.INFO)
+    local snapshot_ts = os.date("%Y-%m-%d %H:%M")
+    vim.ui.input({ prompt = "Snapshot name (default: date-time): ", default = snapshot_ts }, function(name)
+      name = vim.trim(name or "")
+      if name == "" then name = snapshot_ts end
+      local db = _jj_snapshot_db()
+      _jj_sql(db, "CREATE TABLE IF NOT EXISTS snapshots(id INTEGER PRIMARY KEY AUTOINCREMENT, op TEXT, ts TEXT, desc TEXT, tip TEXT, stack TEXT)")
+      _jj_sql(db, "INSERT INTO snapshots(op, ts, desc, tip, stack) VALUES(" .. _jj_sql_q(op) .. ", " .. _jj_sql_q(snapshot_ts) .. ", " .. _jj_sql_q(name) .. ", " .. _jj_sql_q(tip) .. ", " .. _jj_sql_q(stack) .. ")")
+      vim.notify("Snapshot saved: '" .. name .. "', op " .. op .. ", " .. n .. " patch(es) → " .. db, vim.log.levels.INFO)
+    end)
   end)
 end, { desc = "jj soft snapshot of whole stack (sqlite)" })
 
@@ -2041,26 +2082,41 @@ local function _jj_current_change_sha()
          vim.trim(runner.execute_command("jj log --ignore-working-copy -r @ --no-graph -T 'commit_id.shortest(12)' 2>/dev/null", nil, nil, true) or "")
 end
 
+-- For Gsd/Gsr: the sha of the current change @'s version stored in the snapshot.
+local function _jj_snapshot_from_current(row)
+  local cur_cid = _jj_current_change_sha()
+  for _, line in ipairs(vim.split(_jj_snapshot_stack_for(row.id), "\n")) do
+    local parts = vim.split(vim.trim(line), "\t", { plain = true })
+    if parts[1] == cur_cid then return parts[2] end
+  end
+  return nil
+end
+
 map("n", "<leader>Gsd", function()
   _jj_snapshot_pick("Snapshot diff: current patch vs snapshot", function(row)
     require("lazy").load({ plugins = { "jj.nvim" } })
+    local runner = require("jj.core.runner")
     local cur_cid, cur_sha = _jj_current_change_sha()
-    local old_sha = nil
-    for _, line in ipairs(vim.split(_jj_snapshot_stack_for(row.id), "\n")) do
-      local parts = vim.split(vim.trim(line), "\t", { plain = true })
-      if parts[1] == cur_cid then old_sha = parts[2] break end
-    end
+    local old_sha = _jj_snapshot_from_current(row)
     if not old_sha then vim.notify("Current patch (" .. cur_cid .. ") not found in snapshot", vim.log.levels.WARN) return end
+    if old_sha == cur_sha then
+      vim.notify("No changes: snapshot patch matches current @", vim.log.levels.INFO)
+      return
+    end
     require("jj.diff").diff_revisions({ left = old_sha, right = cur_sha })
-  end)
+  end, _jj_snapshot_from_current)
 end, { desc = "jj snapshot: current patch diff vs snapshot" })
 
 map("n", "<leader>GsD", function()
   _jj_snapshot_pick("Snapshot diff: whole stack vs snapshot", function(row)
     require("lazy").load({ plugins = { "jj.nvim" } })
     local _, cur_sha = _jj_current_change_sha()
+    if row.tip == cur_sha then
+      vim.notify("No changes: snapshot tip equals current @", vim.log.levels.INFO)
+      return
+    end
     require("jj.diff").diff_revisions({ left = row.tip, right = cur_sha })
-  end)
+  end, function(row) return row.tip end)
 end, { desc = "jj snapshot: whole stack diff vs snapshot" })
 
 map("n", "<leader>Gsr", function()
@@ -2068,11 +2124,7 @@ map("n", "<leader>Gsr", function()
     require("lazy").load({ plugins = { "jj.nvim" } })
     local runner = require("jj.core.runner")
     local cur_cid = _jj_current_change_sha()
-    local old_sha = nil
-    for _, line in ipairs(vim.split(_jj_snapshot_stack_for(row.id), "\n")) do
-      local parts = vim.split(vim.trim(line), "\t", { plain = true })
-      if parts[1] == cur_cid then old_sha = parts[2] break end
-    end
+    local old_sha = _jj_snapshot_from_current(row)
     if not old_sha then vim.notify("Current patch (" .. cur_cid .. ") not found in snapshot", vim.log.levels.WARN) return end
     if vim.fn.confirm("Restore @ content from snapshot " .. old_sha .. "? (undo: gu)", "&Yes\n&No", 2) ~= 1 then return end
     local _, ok = runner.execute_command("jj restore --ignore-working-copy --from " .. vim.fn.shellescape(old_sha) .. " --to @ 2>&1", "Restore failed", nil, false)
@@ -2081,7 +2133,7 @@ map("n", "<leader>Gsr", function()
       vim.notify("Restored @ from snapshot " .. old_sha, vim.log.levels.INFO)
       if require("jj.ui.terminal").is_log_buffer_open() then require("jj.cmd").log({}) end
     end
-  end)
+  end, _jj_snapshot_from_current)
 end, { desc = "jj snapshot: restore current patch from picked snapshot" })
 
 map("n", "<leader>GsR", function()
@@ -2095,7 +2147,7 @@ map("n", "<leader>GsR", function()
       vim.notify("Restored @ from snapshot tip " .. row.tip, vim.log.levels.INFO)
       if require("jj.ui.terminal").is_log_buffer_open() then require("jj.cmd").log({}) end
     end
-  end)
+  end, function(row) return row.tip end)
 end, { desc = "jj snapshot: restore whole stack from picked snapshot" })
 
 {% endif %}
