@@ -174,7 +174,6 @@ q | quit jujutsu window
 interactive regase | gl + r (on line or multiple visual ones ones)
 jj squash (horizontal term, keeps Includes squashed: msg, editor after) | <leader>grs
 jj squash (horizontal term, instant, no editor) | <leader>grS
-jj rebase @ onto picked dest (keeps message, TAG-aware) | <leader>grR
 jj divergent versions of @ (diffview) | <leader>gdv
 jj all divergent changes (pick, diffview) | <leader>gDv
 move current file diff (@) into selected patch | <leader>gF (dropdown picks destination)
