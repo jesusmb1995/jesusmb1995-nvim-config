@@ -732,7 +732,11 @@ local function _jj_diff_divergent_group(gd_root, g, at_commit)
   end
   _jj_in_root(gd_root, function()
     require("lazy").load({ plugins = { "jj.nvim" } })
-    require("jj.diff").diff_revisions({ left = left, right = right })
+    -- NOTE: jj.nvim diff_revisions({left, right}) opens
+    -- `DiffviewOpen right..left`, i.e. panels come out SWAPPED versus the
+    -- parameter names. Pass ours as left / theirs as right so the actual
+    -- panels land theirs-left (showing `-`) and ours-right (showing `+`).
+    require("jj.diff").diff_revisions({ left = right, right = left })
     _jj_label_diffview_sides(ltext, rtext)
   end)
   return left, right, ltext, rtext
@@ -776,7 +780,10 @@ map("n", "<leader>gDv", function()
       pair_labels[left .. ".." .. right] = { ltext, rtext }
       _jj_in_root(gd_root, function()
         require("lazy").load({ plugins = { "jj.nvim" } })
-        require("jj.diff").diff_revisions({ left = left, right = right })
+        -- Same swap as _jj_diff_divergent_group (backend opens
+        -- `DiffviewOpen right..left`): pass ours as left and theirs as
+        -- right so the panels land theirs-left, ours-right.
+        require("jj.diff").diff_revisions({ left = right, right = left })
       end)
     end
     vim.defer_fn(function()
@@ -802,14 +809,28 @@ map("n", "<leader>gvr", function()
       return
     end
     local cd = "cd " .. vim.fn.shellescape(gd_root) .. " && "
+    local at_commit = vim.trim(runner.execute_command("jj log --ignore-working-copy -r @ --no-graph -T 'commit_id' 2>/dev/null", nil, nil, true) or "")
+    local function diff_stat(rev)
+      return runner.execute_command(cd .. "jj diff --ignore-working-copy --from " .. vim.fn.shellescape(at_commit) .. " --to " .. vim.fn.shellescape(rev) .. " --stat 2>/dev/null", nil, nil, true) or ""
+    end
+    local function stat_counts(stat)
+      local a = stat:match("(%d+) insertions?%(%+%)")
+      local d = stat:match("(%d+) deletions?%(%-%)")
+      return tonumber(a) or 0, tonumber(d) or 0
+    end
+    -- Preview shows the decision delta @ -> version, so `+` lines are
+    -- exactly what picking this entry keeps/gains.
     local function version_preview(rev)
-      local stat = runner.execute_command(cd .. "jj diff --ignore-working-copy -r " .. vim.fn.shellescape(rev) .. " --stat 2>/dev/null", nil, nil, true) or ""
-      local patch = runner.execute_command(cd .. "jj diff --ignore-working-copy -r " .. vim.fn.shellescape(rev) .. " --git 2>/dev/null", nil, nil, true) or ""
+      if at_commit ~= "" and at_commit:sub(1, #rev) == rev then
+        return { "(this is current @ content — picking keeps everything as-is)" }
+      end
+      local stat = diff_stat(rev)
+      local patch = runner.execute_command(cd .. "jj diff --ignore-working-copy --from " .. vim.fn.shellescape(at_commit) .. " --to " .. vim.fn.shellescape(rev) .. " --git 2>/dev/null", nil, nil, true) or ""
       local lines = {}
       for _, l in ipairs(vim.split(vim.trim(stat), "\n")) do
         if l ~= "" then table.insert(lines, l) end
       end
-      if #lines == 0 then table.insert(lines, "(empty version)") end
+      if #lines == 0 then table.insert(lines, "(no content difference vs @)") end
       table.insert(lines, "")
       local shown, total = 0, 0
       for _, l in ipairs(vim.split(patch, "\n")) do
@@ -819,8 +840,15 @@ map("n", "<leader>gvr", function()
       if total > 100 then table.insert(lines, "... (" .. (total - 100) .. " more lines)") end
       return lines
     end
+    local function gain_text(rev)
+      if at_commit ~= "" and at_commit:sub(1, #rev) == rev then
+        return "keeps everything as-is"
+      end
+      local a, d = stat_counts(diff_stat(rev))
+      return "gain +" .. a .. ", lose -" .. d
+    end
     local function do_resolve(rev, idx)
-      if vim.fn.confirm("Resolve to /" .. idx .. " " .. rev .. "? abandons " .. (#target.commits - 1) .. " other version(s) (undo: gu)", "&Yes\n&No", 2) ~= 1 then
+      if vim.fn.confirm("Resolve to /" .. idx .. " " .. rev .. " (" .. gain_text(rev) .. ")? abandons " .. (#target.commits - 1) .. " other version(s) (undo: gu)", "&Yes\n&No", 2) ~= 1 then
         return
       end
       local losers = {}
@@ -840,7 +868,14 @@ map("n", "<leader>gvr", function()
     end
     local items = {}
     for i, cid in ipairs(target.commits) do
-      table.insert(items, { rev = cid, idx = i, text = "/" .. i .. " " .. cid .. " " .. (target.descs[i] or "") })
+      local suffix = ""
+      if not (at_commit ~= "" and at_commit:sub(1, #cid) == cid) then
+        local a, d = stat_counts(diff_stat(cid))
+        suffix = " (+" .. a .. " -" .. d .. " vs @)"
+      else
+        suffix = " (current @)"
+      end
+      table.insert(items, { rev = cid, idx = i, text = "/" .. i .. " " .. cid .. " " .. (target.descs[i] or "") .. suffix })
     end
     local ok_snacks = pcall(require("lazy").load, { plugins = { "snacks.nvim" } })
     local ok_picker, Snacks = pcall(require, "snacks")
