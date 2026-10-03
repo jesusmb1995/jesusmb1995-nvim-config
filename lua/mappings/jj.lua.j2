@@ -585,6 +585,8 @@ local function _jj_divergent_groups()
   end
   return multi
 end
+-- Forward declaration: defined below, used by the deferred pass here.
+local _jj_set_tab_side_labels
 -- Label the sides of a freshly opened diffview tab: left window gets the
 -- left rev, right window the right rev ([1]/[2] + short desc). Diffview
 -- focuses its new tab on open, so a short deferred pass finds it.
@@ -606,27 +608,80 @@ local function _jj_label_diffview_sides(left_rev, left_desc, right_rev, right_de
     if not tab then
       return
     end
-    local wins = {}
-    for _, w in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do
-      local buf = vim.api.nvim_win_get_buf(w)
-      if vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].filetype ~= "DiffviewFiles" then
-        local _, col = unpack(vim.api.nvim_win_get_position(w))
-        table.insert(wins, { win = w, col = col })
+    _jj_set_tab_side_labels(tab, left_rev, left_desc, right_rev, right_desc)
+  end, 600)
+end
+-- Shared winbar painter: leftmost file window gets the left rev, rightmost
+-- the right rev. Skips tabs already labeled (re-runs stay idempotent).
+_jj_set_tab_side_labels = function(tab, left_rev, left_desc, right_rev, right_desc)
+  local wins = {}
+  for _, w in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do
+    local buf = vim.api.nvim_win_get_buf(w)
+    if vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].filetype ~= "DiffviewFiles" then
+      if vim.wo[w].winbar ~= "" then
+        return false
+      end
+      local _, col = unpack(vim.api.nvim_win_get_position(w))
+      table.insert(wins, { win = w, col = col })
+    end
+  end
+  if #wins < 2 then
+    return false
+  end
+  table.sort(wins, function(a, b) return a.col < b.col end)
+  local function short(desc)
+    desc = vim.trim(desc or "")
+    if desc == "" then desc = "(no description)" end
+    if #desc > 50 then desc = desc:sub(1, 47) .. "..." end
+    return desc
+  end
+  vim.wo[wins[1].win].winbar = "◀ [1] " .. left_rev .. " " .. short(left_desc)
+  vim.wo[wins[#wins].win].winbar = "[2] " .. right_rev .. " " .. short(right_desc) .. " ▶"
+  return true
+end
+-- Label every still-unlabeled diffview tab whose rev pair matches a known
+-- group (used after opening one tab per divergent group).
+local function _jj_label_matching_diffview_tabs(pair_labels)
+  local ok, lib = pcall(require, "diffview.lib")
+  if not ok then
+    return
+  end
+  for _, view in ipairs(lib.views or {}) do
+    local tab = view.tabpage
+    if tab and vim.api.nvim_tabpage_is_valid(tab) then
+      local pair = nil
+      if view.cur_entry and view.cur_entry.revs then
+        local a, b = view.cur_entry.revs.a, view.cur_entry.revs.b
+        if a and b and a.commit and b.commit then
+          pair = a.commit .. ".." .. b.commit
+        end
+      end
+      if not pair and view.cur_layout then
+        local fa = view.cur_layout.a and view.cur_layout.a.file and view.cur_layout.a.file.rev
+        local fb = view.cur_layout.b and view.cur_layout.b.file and view.cur_layout.b.file.rev
+        if fa and fb and fa.commit and fb.commit then
+          pair = fa.commit .. ".." .. fb.commit
+        end
+      end
+      -- Views carry full SHAs, groups store shortest(8): prefix-match.
+      local info = nil
+      if pair then
+        local fa, fb = pair:match("^(.-)%.%.(.-)$")
+        if fa and fb then
+          for key, cand in pairs(pair_labels) do
+            local ka, kb = key:match("^(.-)%.%.(.-)$")
+            if ka and kb and fa:sub(1, #ka) == ka and fb:sub(1, #kb) == kb then
+              info = cand
+              break
+            end
+          end
+        end
+      end
+      if info then
+        _jj_set_tab_side_labels(tab, info[1], info[2], info[3], info[4])
       end
     end
-    if #wins < 2 then
-      return
-    end
-    table.sort(wins, function(a, b) return a.col < b.col end)
-    local function short(desc)
-      desc = vim.trim(desc or "")
-      if desc == "" then desc = "(no description)" end
-      if #desc > 50 then desc = desc:sub(1, 47) .. "..." end
-      return desc
-    end
-    vim.wo[wins[1].win].winbar = "◀ [1] " .. left_rev .. " " .. short(left_desc)
-    vim.wo[wins[#wins].win].winbar = "[2] " .. right_rev .. " " .. short(right_desc) .. " ▶"
-  end, 600)
+  end
 end
 local function _jj_diff_divergent_group(gd_root, g)
   -- Always the two most recent versions (jj log lists newest first); no
@@ -658,30 +713,24 @@ map("n", "<leader>gDv", function()
   local gd_root = _find_jj_root() or vim.fn.getcwd()
   _with_jj_repo(function()
     require("lazy").load({ plugins = { "jj.nvim" } })
-    local runner = require("jj.core.runner")
     local groups = _jj_divergent_groups()
     if #groups == 0 then vim.notify("No divergent changes on the stack", vim.log.levels.INFO) return end
-    local lines = {}
+    -- One diffview tab per group (same UI as gdv); a single deferred pass
+    -- labels every still-unlabeled diffview tab by matching its rev pair.
+    local pair_labels = {}
     for _, g in ipairs(groups) do
-      local from, to = g.commits[1], g.commits[2]
-      table.insert(lines, "=== " .. g.change .. " (" .. (g.descs[1] or "") .. "): [1]" .. from .. " vs [2]" .. to .. " ===")
-      local diff = runner.execute_command("jj diff --ignore-working-copy --from " .. vim.fn.shellescape(from) .. " --to " .. vim.fn.shellescape(to) .. " --git 2>/dev/null", nil, nil, true) or ""
-      diff = vim.trim(diff)
-      if diff == "" then
-        table.insert(lines, "(no content difference — versions differ in metadata only)")
-      else
-        for _, l in ipairs(vim.split(diff, "\n")) do table.insert(lines, l) end
-      end
-      table.insert(lines, "")
+      local left, right = g.commits[1], g.commits[2]
+      pair_labels[left .. ".." .. right] = { left, g.descs[1] or "", right, g.descs[2] or "" }
+      _jj_in_root(gd_root, function()
+        require("lazy").load({ plugins = { "jj.nvim" } })
+        require("jj.diff").diff_revisions({ left = left, right = right })
+      end)
     end
-    vim.cmd("tabnew")
-    local buf = vim.api.nvim_get_current_buf()
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-    vim.bo[buf].modifiable = false
-    vim.bo[buf].readonly = true
-    vim.bo[buf].filetype = "diff"
+    vim.defer_fn(function()
+      _jj_label_matching_diffview_tabs(pair_labels)
+    end, 1500)
   end)
-end, { desc = "jj all divergent diffs in one buffer" })
+end, { desc = "jj all divergent diffs (diffview tab per group)" })
 -- gvr: pick the winning version of @'s divergent change (/1, /2, ... newest
 -- first — same numbering as the `jj-pick-divergence` alias). Preview shows
 -- each version's own patch; confirming abandons the losers (jj undo reverts).

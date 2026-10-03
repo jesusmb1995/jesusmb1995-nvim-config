@@ -175,7 +175,7 @@ interactive regase | gl + r (on line or multiple visual ones ones)
 jj squash (horizontal term, keeps Includes squashed: msg, editor after) | <leader>grs
 jj squash (horizontal term, instant, no editor) | <leader>grS
 jj divergent versions of @ (diffview) | <leader>gdv
-jj all divergent diffs in one buffer | <leader>gDv
+jj all divergent diffs (diffview tab per group) | <leader>gDv
 jj resolve divergent @ to picked version (preview) | <leader>gvr
 move current file diff (@) into selected patch | <leader>gF (dropdown picks destination)
 jj mutable() telescope dropdown → edit pick | <leader>gkg
@@ -207,6 +207,7 @@ change revset | <C-r>
 history | <S-h>
 close log | q / <Esc>
 ## Aliases (.aliases)
+Resolve divergent @ to version /N (lists with no N, --yes skips confirm) | jj-pick-divergence [N]
 Stage all conflicts as resolved (alias) | git-resolve 
 Stage all conflicts as resolved and refresh (alias) | stg-resolve 
 ## gitsigns
