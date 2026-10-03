@@ -1,4 +1,7 @@
-## overview nvim (glob groups: one row per area, details in the sections below)
+# one row per area, keyed by a leader glob; details in the sections below.
+# keep this section name SHORT: it is the first column of every row and the
+# results pane is ~66 chars wide, so a long name hides desc | code.
+## overview
 help: this sheet (edit: <C-e>, yank: <C-y>) | <leader>?
 jj patches: core (status/log/describe/new/commit/undo) | <leader>g*
 jj bookmarks: create/set/move/merge | <leader>gb*

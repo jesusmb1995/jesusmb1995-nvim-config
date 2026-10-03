@@ -23,6 +23,21 @@
 --  * git_branch_recognizable is forced off: jj has no branch, and in a git
 --    colocated repo the value would churn on every export, scattering notes
 --    into a new dir each time.
+-- Open (creating if needed) the single project-wide note. The plugin's own
+-- NewNoteAtCWD/OpenNoteAtCWD both prompt with vim.fn.input for a name, which is
+-- noise for a "just take me there" binding — so drive the path helpers directly.
+local function project_note()
+  local path = require("quicknote.utils.path")
+  local utils = require("quicknote.utils")
+  local dir = path.getNoteDirPathForCWD()
+  local file = dir .. "/project." .. utils.config.GetFileType()
+  vim.fn.mkdir(dir, "p")
+  if vim.fn.filereadable(file) == 0 then
+    vim.fn.writefile({ "# " .. vim.fn.fnamemodify(vim.fn.getcwd(), ":t"), "" }, file)
+  end
+  vim.cmd("edit " .. vim.fn.fnameescape(file))
+end
+
 return {
   "RutaTang/quicknote.nvim",
   dependencies = { "nvim-lua/plenary.nvim" },
@@ -32,14 +47,13 @@ return {
   end,
   keys = {
     { "<leader>qn", function() require("quicknote").NewNoteAtCurrentLine() end, mode = "n", desc = "Note: new at current line (project+file+line)" },
-    { "<leader>qN", function() require("quicknote").NewNoteAtCWD() end, mode = "n", desc = "Note: new for current project (no line)" },
+    { "<leader>qN", project_note, mode = "n", desc = "Note: go to project note (create if missing)" },
     { "<leader>qo", function() require("quicknote").OpenNoteAtCurrentLine() end, mode = "n", desc = "Note: open at current line" },
-    { "<leader>qO", function() require("quicknote").OpenNoteAtCWD() end, mode = "n", desc = "Note: open project note" },
     { "<leader>qd", function() require("quicknote").DeleteNoteAtCurrentLine() end, mode = "n", desc = "Note: delete at current line" },
     { "<leader>ql", function() require("quicknote").ListNotesForCWD() end, mode = "n", desc = "Note: list for current project" },
     { "<leader>qL", function() require("quicknote").ListNotesForCurrentBuffer() end, mode = "n", desc = "Note: list for current file" },
-    { "<leader>qj", function() require("quicknote").JumpToNextNote() end, mode = "n", desc = "Note: jump to next note in file" },
-    { "<leader>qk", function() require("quicknote").JumpToPreviousNote() end, mode = "n", desc = "Note: jump to previous note in file" },
+    { "<leader>q]", function() require("quicknote").JumpToNextNote() end, mode = "n", desc = "Note: jump to next note in file" },
+    { "<leader>q[", function() require("quicknote").JumpToPreviousNote() end, mode = "n", desc = "Note: jump to previous note in file" },
     { "<leader>qt", function() require("quicknote").ToggleNoteSigns() end, mode = "n", desc = "Note: toggle note signs" },
   },
   config = function()

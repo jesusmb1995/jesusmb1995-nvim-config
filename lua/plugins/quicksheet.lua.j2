@@ -34,15 +34,22 @@ return {
       local function make_entry(entry)
         return {
           value = entry,
-          -- Chunk list => telescope highlights each part separately.
-          display = function()
-            return {
-              { entry.section, "QuickSheetSection" },
-              { " | ", "QuickSheetSep" },
-              { entry.description },
-              { " | ", "QuickSheetSep" },
-              { entry.code, "QuickSheetCode" },
-            }
+          -- Telescope's entry_display.resolve only honours a display that
+          -- returns a STRING (plus an optional highlights table). Returning a
+          -- chunk list renders nothing at all, so build the string here and
+          -- pass 0-based [start, end) highlight ranges alongside it.
+          -- Called as entry:display(picker), so the first arg is the entry.
+          display = function(e)
+            local s, d, c = e.section, e.description, e.code
+            local a = #s -- end of section
+            local b = a + 3 + #d -- end of description
+            return s .. " | " .. d .. " | " .. c,
+              {
+                { { 0, a }, "QuickSheetSection" },
+                { { a, a + 3 }, "QuickSheetSep" },
+                { { b, b + 3 }, "QuickSheetSep" },
+                { { b + 3, b + 3 + #c }, "QuickSheetCode" },
+              }
           end,
           ordinal = entry.section .. " " .. entry.description .. " " .. entry.code,
           description = entry.description,
