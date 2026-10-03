@@ -550,8 +550,8 @@ end
 map("n", "<leader>grs", function() _jj_grs_squash(true) end, { desc = "jj squash @ into parent (horizontal term, editor after)" })
 map("n", "<leader>grS", function() _jj_grs_squash(false) end, { desc = "jj squash @ into parent (horizontal term, instant)" })
 map("n", "<leader>grd", "<cmd>JJ rebase<CR>", { desc = "jj rebase -d <destination>" })
--- gdv/gvD: divergent-change diffviews. jj divergence = several visible
--- commits sharing one change id (concurrent ops, fetch races). gdv diffs
+-- gvd/gvD: divergent-change diffviews. jj divergence = several visible
+-- commits sharing one change id (concurrent ops, fetch races). gvd diffs
 -- @'s own versions; gvD lists every divergent group on the stack.
 local function _jj_divergent_groups()
   require("lazy").load({ plugins = { "jj.nvim" } })
@@ -735,7 +735,7 @@ local function _jj_index_texts(i, rev, idesc, j, rev2, jdesc)
     "[" .. j .. "] " .. rev2 .. " " .. _jj_short_desc(jdesc) .. " ▶"
 end
 local function _jj_diff_divergent_group(gd_root, g, at_commit)
-  -- No picker — gvD already shows every group, gdv targets one change.
+  -- No picker — gvD already shows every group, gvd targets one change.
   local ti, oi, anchored = _jj_ours_theirs(g, at_commit)
   local left, right = g.commits[ti], g.commits[oi]
   local ltext, rtext
@@ -755,7 +755,7 @@ local function _jj_diff_divergent_group(gd_root, g, at_commit)
   end)
   return left, right, ltext, rtext
 end
-map("n", "<leader>gdv", function()
+map("n", "<leader>gvd", function()
   local gd_root = _find_jj_root() or vim.fn.getcwd()
   _with_jj_repo(function()
     require("lazy").load({ plugins = { "jj.nvim" } })
@@ -779,7 +779,7 @@ map("n", "<leader>gvD", function()
     local at_commit = vim.trim(runner.execute_command("jj log --ignore-working-copy -r @ --no-graph -T 'commit_id' 2>/dev/null", nil, nil, true) or "")
     local groups = _jj_divergent_groups()
     if #groups == 0 then vim.notify("No divergent changes on the stack", vim.log.levels.INFO) return end
-    -- One diffview tab per group (same UI as gdv); a single deferred pass
+    -- One diffview tab per group (same UI as gvd); a single deferred pass
     -- labels every still-unlabeled diffview tab by matching its rev pair.
     local pair_labels = {}
     for _, g in ipairs(groups) do
