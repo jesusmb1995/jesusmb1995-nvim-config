@@ -556,17 +556,29 @@ map("n", "<leader>grd", "<cmd>JJ rebase<CR>", { desc = "jj rebase -d <destinatio
 local function _jj_divergent_groups()
   require("lazy").load({ plugins = { "jj.nvim" } })
   local runner = require("jj.core.runner")
-  local out = runner.execute_command("jj log --ignore-working-copy -r 'divergent()' --no-graph -T 'change_id.shortest(8) ++ \"\\t\" ++ commit_id.shortest(8) ++ \"\\t\" ++ description.first_line() ++ \"\\n\"' 2>/dev/null", nil, nil, true) or ""
+  -- Numbering (/0, /1, ...) comes from jj's own change_offset(), so labels
+  -- match what `jj log` prints after the change id. Falls back to the old
+  -- 3-field template (positional numbering) if a future jj drops it.
+  local out = runner.execute_command("jj log --ignore-working-copy -r 'divergent()' --no-graph -T 'change_id.shortest(8) ++ \"\\t\" ++ commit_id.shortest(8) ++ \"\\t\" ++ self.change_offset() ++ \"\\t\" ++ description.first_line() ++ \"\\n\"' 2>/dev/null", nil, nil, true) or ""
+  if vim.trim(out) == "" then
+    out = runner.execute_command("jj log --ignore-working-copy -r 'divergent()' --no-graph -T 'change_id.shortest(8) ++ \"\\t\" ++ commit_id.shortest(8) ++ \"\\t\" ++ description.first_line() ++ \"\\n\"' 2>/dev/null", nil, nil, true) or ""
+  end
   local groups, order = {}, {}
   for _, line in ipairs(vim.split(out, "\n")) do
     line = vim.trim(line)
     if line ~= "" then
       local parts = vim.split(line, "\t", { plain = true })
-      local change, cid, desc = vim.trim(parts[1] or ""), vim.trim(parts[2] or ""), vim.trim(parts[3] or "")
+      local change, cid, desc, off = vim.trim(parts[1] or ""), vim.trim(parts[2] or ""), nil, nil
+      if #parts >= 4 then
+        off = tonumber(parts[3])
+        desc = vim.trim(parts[4] or "")
+      else
+        desc = vim.trim(parts[3] or "")
+      end
       if change ~= "" and cid ~= "" then
         local g = groups[change]
         if not g then
-          g = { change = change, commits = {}, descs = {} }
+          g = { change = change, commits = {}, descs = {}, nums = {} }
           groups[change] = g
           table.insert(order, g)
         end
@@ -575,6 +587,8 @@ local function _jj_divergent_groups()
         if not seen then
           table.insert(g.commits, cid)
           table.insert(g.descs, desc)
+          -- Fallback numbering when jj gave no offset: position-based.
+          table.insert(g.nums, off ~= nil and off or (#g.commits - 1))
         end
       end
     end
@@ -726,9 +740,9 @@ local function _jj_diff_divergent_group(gd_root, g, at_commit)
   local left, right = g.commits[ti], g.commits[oi]
   local ltext, rtext
   if anchored then
-    ltext, rtext = _jj_side_texts(ti, left, g.descs[ti] or "", oi, right, g.descs[oi] or "")
+    ltext, rtext = _jj_side_texts(g.nums[ti], left, g.descs[ti] or "", g.nums[oi], right, g.descs[oi] or "")
   else
-    ltext, rtext = _jj_index_texts(ti, left, g.descs[ti] or "", oi, right, g.descs[oi] or "")
+    ltext, rtext = _jj_index_texts(g.nums[ti], left, g.descs[ti] or "", g.nums[oi], right, g.descs[oi] or "")
   end
   _jj_in_root(gd_root, function()
     require("lazy").load({ plugins = { "jj.nvim" } })
@@ -773,9 +787,9 @@ map("n", "<leader>gvD", function()
       local left, right = g.commits[ti], g.commits[oi]
       local ltext, rtext
       if anchored then
-        ltext, rtext = _jj_side_texts(ti, left, g.descs[ti] or "", oi, right, g.descs[oi] or "")
+        ltext, rtext = _jj_side_texts(g.nums[ti], left, g.descs[ti] or "", g.nums[oi], right, g.descs[oi] or "")
       else
-        ltext, rtext = _jj_index_texts(ti, left, g.descs[ti] or "", oi, right, g.descs[oi] or "")
+        ltext, rtext = _jj_index_texts(g.nums[ti], left, g.descs[ti] or "", g.nums[oi], right, g.descs[oi] or "")
       end
       pair_labels[left .. ".." .. right] = { ltext, rtext }
       _jj_in_root(gd_root, function()
@@ -868,6 +882,7 @@ map("n", "<leader>gvr", function()
     end
     local items = {}
     for i, cid in ipairs(target.commits) do
+      local num = target.nums[i] or (i - 1)
       local suffix = ""
       if not (at_commit ~= "" and at_commit:sub(1, #cid) == cid) then
         local a, d = stat_counts(diff_stat(cid))
@@ -875,7 +890,7 @@ map("n", "<leader>gvr", function()
       else
         suffix = " (current @)"
       end
-      table.insert(items, { rev = cid, idx = i, text = "/" .. i .. " " .. cid .. " " .. (target.descs[i] or "") .. suffix })
+      table.insert(items, { rev = cid, idx = num, text = "/" .. num .. " " .. cid .. " " .. (target.descs[i] or "") .. suffix })
     end
     local ok_snacks = pcall(require("lazy").load, { plugins = { "snacks.nvim" } })
     local ok_picker, Snacks = pcall(require, "snacks")
