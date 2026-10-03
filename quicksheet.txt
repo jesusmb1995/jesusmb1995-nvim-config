@@ -177,6 +177,7 @@ jj squash (horizontal term, instant, no editor) | <leader>grS
 jj divergent versions of @ (diffview) | <leader>gvd
 jj all divergent diffs (diffview tab per group) | <leader>gvD
 jj resolve divergent @ to picked version (preview) | <leader>gvr
+jj resolve ALL divergent groups (picker per change) | <leader>gvR
 move current file diff (@) into selected patch | <leader>gF (dropdown picks destination)
 jj mutable() telescope dropdown → edit pick | <leader>gkg
 move empty workspace @s to fork base | <leader>gW (:JJworkspacesToBase)
@@ -208,6 +209,7 @@ history | <S-h>
 close log | q / <Esc>
 ## Aliases (.aliases)
 Resolve divergent @ to version /N (lists with no N, --yes skips confirm) | jj-pick-divergence [N]
+Resolve every divergent group, picking a version each (interactive) | jj-pick-divergents [--yes]
 Stage all conflicts as resolved (alias) | git-resolve 
 Stage all conflicts as resolved and refresh (alias) | stg-resolve 
 ## gitsigns
