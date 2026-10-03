@@ -78,7 +78,10 @@ return {
 
         pickers
           .new({}, {
-            prompt_title = "QuickSheet" .. (section_filter and ("  [" .. section_filter .. "]") or ""),
+            -- Title doubles as the legend for <C-s>: shows the active section
+            -- filter and what the key would do next.
+            prompt_title = section_filter and ("QuickSheet [" .. section_filter .. "]  ·  <C-s> clear section")
+              or "QuickSheet  ·  <C-s> filter to hovered section",
             finder = finders.new_table({ results = results, entry_maker = make_entry }),
             sorter = conf.generic_sorter({}),
             default_text = default_text,
