@@ -175,11 +175,11 @@ end
 return {
   "RutaTang/quicknote.nvim",
   dependencies = { "nvim-lua/plenary.nvim" },
-  cmd = { "QuickNote" },
-  -- Lazy on purpose: the plugin loads on the first <leader>q* keypress (or
-  -- :QuickNote). Sign marks must therefore be (re)applied for already-open
-  -- buffers at the end of config() — by then BufReadPost has long passed, so
-  -- the autocmds alone would leave the current file unmarked until next visit.
+cmd = { "QuickNote" },
+  -- eager: the sign marks must be there the moment a file is opened, and a
+  -- lazy plugin only installs its autocmds after the first <leader>q* keypress
+  -- — by which point BufReadPost has passed and the file stays unmarked.
+  lazy = false,
   enabled = function()
     return vim.env.NVIM_MINIMAL == nil
   end,
@@ -256,8 +256,15 @@ return {
         refresh_signs(ev.buf)
       end,
     })
-    -- The plugin loaded on this very keypress, so the buffer we care about is
-    -- already open and its BufReadPost has passed: mark it right away.
+    -- config() runs during startup, which can be BEFORE the file named on the
+    -- command line is read, so BufReadPost for it may already have gone by.
+    -- VimEnter is the first event guaranteed to be after both.
+    vim.api.nvim_create_autocmd({ "VimEnter", "BufWinEnter" }, {
+      group = group,
+      callback = function()
+        refresh_signs(0)
+      end,
+    })
     refresh_signs(0)
     vim.schedule(function()
       refresh_signs(0)
