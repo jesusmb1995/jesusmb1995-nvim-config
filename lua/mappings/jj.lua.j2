@@ -663,7 +663,7 @@ map("n", "<leader>gDv", function()
     if #groups == 0 then vim.notify("No divergent changes on the stack", vim.log.levels.INFO) return end
     local lines = {}
     for _, g in ipairs(groups) do
-      local from, to = g.commits[1], g.commits[#g.commits]
+      local from, to = g.commits[1], g.commits[2]
       table.insert(lines, "=== " .. g.change .. " (" .. (g.descs[1] or "") .. "): [1]" .. from .. " vs [2]" .. to .. " ===")
       local diff = runner.execute_command("jj diff --ignore-working-copy --from " .. vim.fn.shellescape(from) .. " --to " .. vim.fn.shellescape(to) .. " --git 2>/dev/null", nil, nil, true) or ""
       diff = vim.trim(diff)
@@ -682,6 +682,90 @@ map("n", "<leader>gDv", function()
     vim.bo[buf].filetype = "diff"
   end)
 end, { desc = "jj all divergent diffs in one buffer" })
+-- gvr: pick the winning version of @'s divergent change (/1, /2, ... newest
+-- first — same numbering as the `jj-pick-divergence` alias). Preview shows
+-- each version's own patch; confirming abandons the losers (jj undo reverts).
+map("n", "<leader>gvr", function()
+  local gd_root = _find_jj_root() or vim.fn.getcwd()
+  _with_jj_repo(function()
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    local runner = require("jj.core.runner")
+    local cur = vim.trim(runner.execute_command("jj log --ignore-working-copy -r @ --no-graph -T 'change_id.shortest(8)' 2>/dev/null", nil, nil, true) or "")
+    local target = nil
+    for _, g in ipairs(_jj_divergent_groups()) do
+      if g.change == cur then target = g break end
+    end
+    if not target or #target.commits < 2 then
+      vim.notify("Current patch is not divergent", vim.log.levels.INFO)
+      return
+    end
+    local cd = "cd " .. vim.fn.shellescape(gd_root) .. " && "
+    local function version_preview(rev)
+      local stat = runner.execute_command(cd .. "jj diff --ignore-working-copy -r " .. vim.fn.shellescape(rev) .. " --stat 2>/dev/null", nil, nil, true) or ""
+      local patch = runner.execute_command(cd .. "jj diff --ignore-working-copy -r " .. vim.fn.shellescape(rev) .. " --git 2>/dev/null", nil, nil, true) or ""
+      local lines = {}
+      for _, l in ipairs(vim.split(vim.trim(stat), "\n")) do
+        if l ~= "" then table.insert(lines, l) end
+      end
+      if #lines == 0 then table.insert(lines, "(empty version)") end
+      table.insert(lines, "")
+      local shown, total = 0, 0
+      for _, l in ipairs(vim.split(patch, "\n")) do
+        total = total + 1
+        if shown < 100 then table.insert(lines, l) shown = shown + 1 end
+      end
+      if total > 100 then table.insert(lines, "... (" .. (total - 100) .. " more lines)") end
+      return lines
+    end
+    local function do_resolve(rev, idx)
+      if vim.fn.confirm("Resolve to /" .. idx .. " " .. rev .. "? abandons " .. (#target.commits - 1) .. " other version(s) (undo: gu)", "&Yes\n&No", 2) ~= 1 then
+        return
+      end
+      local losers = {}
+      for _, cid in ipairs(target.commits) do
+        if cid ~= rev then table.insert(losers, cid) end
+      end
+      _jj_in_root(gd_root, function()
+        require("lazy").load({ plugins = { "jj.nvim" } })
+        local r2 = require("jj.core.runner")
+        local _, ok = r2.execute_command("jj abandon --ignore-immutable " .. table.concat(vim.tbl_map(vim.fn.shellescape, losers), " ") .. " 2>&1", "Resolve failed", nil, false)
+        if ok then
+          r2.execute_command("jj workspace update-stale 2>&1", nil, nil, true)
+          require("jj.utils").notify("Resolved to /" .. idx .. " " .. rev, vim.log.levels.INFO)
+          if require("jj.ui.terminal").is_log_buffer_open() then require("jj.cmd").log({}) end
+        end
+      end)
+    end
+    local items = {}
+    for i, cid in ipairs(target.commits) do
+      table.insert(items, { rev = cid, idx = i, text = "/" .. i .. " " .. cid .. " " .. (target.descs[i] or "") })
+    end
+    local ok_snacks = pcall(require("lazy").load, { plugins = { "snacks.nvim" } })
+    local ok_picker, Snacks = pcall(require, "snacks")
+    if ok_snacks and ok_picker and Snacks.picker then
+      Snacks.picker.pick({
+        title = "Resolve divergent " .. target.change .. " (pick winner)",
+        items = items,
+        format = "text",
+        preview = function(ctx)
+          if not ctx.item or not ctx.item.rev then return false end
+          ctx.preview:set_lines(version_preview(ctx.item.rev))
+          ctx.preview:highlight({ ft = "diff" })
+          return true
+        end,
+        confirm = function(picker, item)
+          if not item then return end
+          picker:close()
+          do_resolve(item.rev, item.idx)
+        end,
+      })
+      return
+    end
+    vim.ui.select(items, { prompt = "Resolve to:", format_item = function(i) return i.text end }, function(choice)
+      if choice then do_resolve(choice.rev, choice.idx) end
+    end)
+  end)
+end, { desc = "jj resolve divergent @ to picked version" })
 map("n", "<leader>gS", "<cmd>JJ split<CR>", { desc = "jj split [<change>]" })
 map("n", "<leader>gR", "<cmd>JJ resolve<CR>", { desc = "jj resolve [<files>...]" })
 -- ga: abandon current @ directly
