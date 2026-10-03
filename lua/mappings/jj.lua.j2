@@ -550,9 +550,9 @@ end
 map("n", "<leader>grs", function() _jj_grs_squash(true) end, { desc = "jj squash @ into parent (horizontal term, editor after)" })
 map("n", "<leader>grS", function() _jj_grs_squash(false) end, { desc = "jj squash @ into parent (horizontal term, instant)" })
 map("n", "<leader>grd", "<cmd>JJ rebase<CR>", { desc = "jj rebase -d <destination>" })
--- gdv/gDv: divergent-change diffviews. jj divergence = several visible
+-- gdv/gvD: divergent-change diffviews. jj divergence = several visible
 -- commits sharing one change id (concurrent ops, fetch races). gdv diffs
--- @'s own versions; gDv lists every divergent group on the stack.
+-- @'s own versions; gvD lists every divergent group on the stack.
 local function _jj_divergent_groups()
   require("lazy").load({ plugins = { "jj.nvim" } })
   local runner = require("jj.core.runner")
@@ -721,7 +721,7 @@ local function _jj_index_texts(i, rev, idesc, j, rev2, jdesc)
     "[" .. j .. "] " .. rev2 .. " " .. _jj_short_desc(jdesc) .. " ▶"
 end
 local function _jj_diff_divergent_group(gd_root, g, at_commit)
-  -- No picker — gDv already shows every group, gdv targets one change.
+  -- No picker — gvD already shows every group, gdv targets one change.
   local ti, oi, anchored = _jj_ours_theirs(g, at_commit)
   local left, right = g.commits[ti], g.commits[oi]
   local ltext, rtext
@@ -757,7 +757,7 @@ map("n", "<leader>gdv", function()
     vim.notify("Current patch is not divergent", vim.log.levels.INFO)
   end)
 end, { desc = "jj divergent versions of @ (diffview)" })
-map("n", "<leader>gDv", function()
+map("n", "<leader>gvD", function()
   local gd_root = _find_jj_root() or vim.fn.getcwd()
   _with_jj_repo(function()
     require("lazy").load({ plugins = { "jj.nvim" } })
