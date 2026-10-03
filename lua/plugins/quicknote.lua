@@ -176,10 +176,10 @@ return {
   "RutaTang/quicknote.nvim",
   dependencies = { "nvim-lua/plenary.nvim" },
   cmd = { "QuickNote" },
-  -- Load at startup, NOT lazily: the sign autocmds below are what make note
-  -- marks visible, and a lazy plugin only installs them after the first
-  -- keypress — by which time the startup buffer was read and stays unmarked.
-  lazy = false,
+  -- Lazy on purpose: the plugin loads on the first <leader>q* keypress (or
+  -- :QuickNote). Sign marks must therefore be (re)applied for already-open
+  -- buffers at the end of config() — by then BufReadPost has long passed, so
+  -- the autocmds alone would leave the current file unmarked until next visit.
   enabled = function()
     return vim.env.NVIM_MINIMAL == nil
   end,
@@ -227,19 +227,25 @@ return {
     -- First sight of a buffer turns them on; afterwards respect the user's
     -- toggle (ReShow only acts when the state is SHOW).
     local function refresh_signs(buf)
-      if not vim.api.nvim_buf_is_valid(buf) or vim.bo[buf].buftype ~= "" then
+      -- The plugin's Show/ReShow act on the CURRENT buffer, so only ever mark
+      -- the one in front. (Routing marks for other buffers via nvim_buf_call
+      -- puts them on the wrong buffer.) BufEnter covers switching later.
+      -- buf == 0 means "wherever we are", used by the load-time pass below.
+      local cur = vim.api.nvim_get_current_buf()
+      if buf ~= 0 and buf ~= cur then
         return
       end
-      -- ShowNoteSigns/ReShowSigns act on the CURRENT buffer, so hop there.
-      vim.api.nvim_buf_call(buf, function()
-        pcall(function()
-          local sign = require("quicknote.core.sign")
-          if sign.GetSignDisplayState(buf) == nil then
-            sign.ShowNoteSigns()
-          else
-            sign.ReShowSignsForCurrentBuffer()
-          end
-        end)
+      buf = cur
+      if vim.bo[buf].buftype ~= "" then
+        return
+      end
+      pcall(function()
+        local sign = require("quicknote.core.sign")
+        if sign.GetSignDisplayState(buf) == nil then
+          sign.ShowNoteSigns()
+        else
+          sign.ReShowSignsForCurrentBuffer()
+        end
       end)
     end
 
@@ -250,20 +256,11 @@ return {
         refresh_signs(ev.buf)
       end,
     })
-    -- Buffers already open when this plugin loads (lazy.nvim startup order can
-    -- put config() after the first read) and the VimEnter file both need a pass.
-    vim.api.nvim_create_autocmd("VimEnter", {
-      group = group,
-      callback = function()
-        for _, b in ipairs(vim.api.nvim_list_bufs()) do
-          refresh_signs(b)
-        end
-      end,
-    })
+    -- The plugin loaded on this very keypress, so the buffer we care about is
+    -- already open and its BufReadPost has passed: mark it right away.
+    refresh_signs(0)
     vim.schedule(function()
-      for _, b in ipairs(vim.api.nvim_list_bufs()) do
-        refresh_signs(b)
-      end
+      refresh_signs(0)
     end)
 
     -- Optional telescope integration; guard so a missing/renamed extension
