@@ -17,6 +17,7 @@ build target (rather than run) | <C-d>
 test target (forced bazel test) | <C-t>
 run target (forced bazel run, overrides _test heuristic) | <C-g>
 auto test when target contains _test (plain Enter) | <CR> heuristic
+GoogleTest in current file (pick target + subtest filter) | <leader><A-T>
 ## Debugging
 coredumpctl list | list available core dumps
 coredumpctl debug <PID> | attach to specific core dump
@@ -172,6 +173,9 @@ q | quit jujutsu window
 interactive regase | gl + r (on line or multiple visual ones ones)
 jj squash (horizontal term, keeps Includes squashed: msg, editor after) | <leader>grs
 jj squash (horizontal term, instant, no editor) | <leader>grS
+jj rebase @ onto picked dest (keeps message, TAG-aware) | <leader>grR
+jj divergent versions of @ (diffview) | <leader>gdv
+jj all divergent changes (pick, diffview) | <leader>gDv
 move current file diff (@) into selected patch | <leader>gF (dropdown picks destination)
 jj mutable() telescope dropdown → edit pick | <leader>gkg
 move empty workspace @s to fork base | <leader>gW (:JJworkspacesToBase)
