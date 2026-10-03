@@ -585,27 +585,58 @@ local function _jj_divergent_groups()
   end
   return multi
 end
+-- Label the sides of a freshly opened diffview tab: left window gets the
+-- left rev, right window the right rev ([1]/[2] + short desc). Diffview
+-- focuses its new tab on open, so a short deferred pass finds it.
+local function _jj_label_diffview_sides(left_rev, left_desc, right_rev, right_desc)
+  -- Diffview focuses its new tab on open, but not reliably in every context;
+  -- locate the tab holding a DiffviewFiles panel instead of assuming focus.
+  vim.defer_fn(function()
+    local tab = nil
+    for _, t in ipairs(vim.api.nvim_list_tabpages()) do
+      for _, w in ipairs(vim.api.nvim_tabpage_list_wins(t)) do
+        local buf = vim.api.nvim_win_get_buf(w)
+        if vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].filetype == "DiffviewFiles" then
+          tab = t
+          break
+        end
+      end
+      if tab then break end
+    end
+    if not tab then
+      return
+    end
+    local wins = {}
+    for _, w in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do
+      local buf = vim.api.nvim_win_get_buf(w)
+      if vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].filetype ~= "DiffviewFiles" then
+        local _, col = unpack(vim.api.nvim_win_get_position(w))
+        table.insert(wins, { win = w, col = col })
+      end
+    end
+    if #wins < 2 then
+      return
+    end
+    table.sort(wins, function(a, b) return a.col < b.col end)
+    local function short(desc)
+      desc = vim.trim(desc or "")
+      if desc == "" then desc = "(no description)" end
+      if #desc > 50 then desc = desc:sub(1, 47) .. "..." end
+      return desc
+    end
+    vim.wo[wins[1].win].winbar = "◀ [1] " .. left_rev .. " " .. short(left_desc)
+    vim.wo[wins[#wins].win].winbar = "[2] " .. right_rev .. " " .. short(right_desc) .. " ▶"
+  end, 600)
+end
 local function _jj_diff_divergent_group(gd_root, g)
-  if #g.commits == 2 then
-    _jj_in_root(gd_root, function()
-      require("lazy").load({ plugins = { "jj.nvim" } })
-      require("jj.diff").diff_revisions({ left = g.commits[1], right = g.commits[2] })
-    end)
-    return
-  end
-  local items = {}
-  for i, cid in ipairs(g.commits) do
-    table.insert(items, { rev = cid, label = cid .. " " .. (g.descs[i] or "") })
-  end
-  vim.ui.select(items, { prompt = "Divergent " .. g.change .. " — diff FROM:", format_item = function(i) return i.label end }, function(from_choice)
-    if not from_choice then return end
-    vim.ui.select(items, { prompt = "Divergent " .. g.change .. " — diff TO:", format_item = function(i) return i.label end }, function(to_choice)
-      if not to_choice or to_choice.rev == from_choice.rev then return end
-      _jj_in_root(gd_root, function()
-        require("lazy").load({ plugins = { "jj.nvim" } })
-        require("jj.diff").diff_revisions({ left = vim.trim(from_choice.rev), right = vim.trim(to_choice.rev) })
-      end)
-    end)
+  -- Always the two most recent versions (jj log lists newest first); no
+  -- picker — gDv already shows every group, gdv targets one change.
+  local left, right = g.commits[1], g.commits[2]
+  local ldesc, rdesc = g.descs[1] or "", g.descs[2] or ""
+  _jj_in_root(gd_root, function()
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    require("jj.diff").diff_revisions({ left = left, right = right })
+    _jj_label_diffview_sides(left, ldesc, right, rdesc)
   end)
 end
 map("n", "<leader>gdv", function()
@@ -626,42 +657,31 @@ end, { desc = "jj divergent versions of @ (diffview)" })
 map("n", "<leader>gDv", function()
   local gd_root = _find_jj_root() or vim.fn.getcwd()
   _with_jj_repo(function()
+    require("lazy").load({ plugins = { "jj.nvim" } })
+    local runner = require("jj.core.runner")
     local groups = _jj_divergent_groups()
     if #groups == 0 then vim.notify("No divergent changes on the stack", vim.log.levels.INFO) return end
-    local items = {}
+    local lines = {}
     for _, g in ipairs(groups) do
-      table.insert(items, { group = g, label = g.change .. " (" .. #g.commits .. " versions): " .. (g.descs[1] or "") })
-    end
-    local function pick(list, prompt, cb)
-      if pcall(require, "telescope") then
-        local theme_ok, theme = pcall(function() return require("telescope.themes").get_dropdown({}) end)
-        require("telescope.pickers").new(theme_ok and theme or {}, {
-          prompt_title = prompt,
-          finder = require("telescope.finders").new_table({
-            results = list,
-            entry_maker = function(e) return { value = e, display = e.label, ordinal = e.label } end,
-          }),
-          sorter = require("telescope.sorters").get_generic_fuzzy_sorter(),
-          attach_mappings = function(prompt_bufnr, _)
-            local actions = require("telescope.actions")
-            local state = require("telescope.actions.state")
-            actions.select_default:replace(function()
-              local sel = state.get_selected_entry()
-              actions.close(prompt_bufnr)
-              if sel then cb(sel.value) end
-            end)
-            return true
-          end,
-        }):find()
+      local from, to = g.commits[1], g.commits[#g.commits]
+      table.insert(lines, "=== " .. g.change .. " (" .. (g.descs[1] or "") .. "): [1]" .. from .. " vs [2]" .. to .. " ===")
+      local diff = runner.execute_command("jj diff --ignore-working-copy --from " .. vim.fn.shellescape(from) .. " --to " .. vim.fn.shellescape(to) .. " --git 2>/dev/null", nil, nil, true) or ""
+      diff = vim.trim(diff)
+      if diff == "" then
+        table.insert(lines, "(no content difference — versions differ in metadata only)")
       else
-        vim.ui.select(list, { prompt = prompt, format_item = function(i) return i.label end }, cb)
+        for _, l in ipairs(vim.split(diff, "\n")) do table.insert(lines, l) end
       end
+      table.insert(lines, "")
     end
-    pick(items, "Divergent changes:", function(choice)
-      if choice then _jj_diff_divergent_group(gd_root, choice.group) end
-    end)
+    vim.cmd("tabnew")
+    local buf = vim.api.nvim_get_current_buf()
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+    vim.bo[buf].modifiable = false
+    vim.bo[buf].readonly = true
+    vim.bo[buf].filetype = "diff"
   end)
-end, { desc = "jj all divergent changes (pick, diffview)" })
+end, { desc = "jj all divergent diffs in one buffer" })
 map("n", "<leader>gS", "<cmd>JJ split<CR>", { desc = "jj split [<change>]" })
 map("n", "<leader>gR", "<cmd>JJ resolve<CR>", { desc = "jj resolve [<files>...]" })
 -- ga: abandon current @ directly
