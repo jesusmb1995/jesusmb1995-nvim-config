@@ -10,6 +10,18 @@ M.base46 = {
 
   hl_override = {
     Cursor = { fg = "#1e2122", bg = "#ff6000" },
+    -- Uniform dark statusline: the file/jj/middle/cursor sections default to
+    -- lightbg (#2d3031), which bands against the dark statusline_bg (#222526)
+    -- used by the git/lsp/diagnostic sections (and the top bars). Force them
+    -- onto statusline_bg; only bg is overridden, fg stays themed.
+    -- NOTE: init.lua dofiles the COMPILED base46 cache, so after changing
+    -- this, recompile with require("base46").load_all_highlights() (the
+    -- install hook does it at build time; live containers need it manually).
+    St_file = { bg = "#222526" },
+    St_cwd_text = { bg = "#222526" },
+    St_EmptySpace = { bg = "#222526" },
+    St_pos_text = { bg = "#222526" },
+    St_pos_sep = { bg = "#222526" },
   },
 }
 
