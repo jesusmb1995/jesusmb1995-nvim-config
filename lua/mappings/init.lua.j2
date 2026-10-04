@@ -11,6 +11,7 @@ if vim.env.NVIM_MINIMAL == nil then
   local opt = function(m) pcall(require, m) end
   require "mappings.telescope"
   require "mappings.nvim-tree"
+  require "mappings.notes-resources"
   require "mappings.cmp"
 {% if not system_tools.jj %}
   opt "mappings.neogit"

@@ -10,7 +10,7 @@ jj divergence: diffs + resolve, one family | <leader>gv*
 jj workspaces & git worktrees | <leader>gw*
 jj squash / rebase / split / resolve | <leader>g[rR S]*
 jj history + diffs + stack snapshots | <leader>G*
-quicknotes: note per line, note per project | <leader>q*
+quicknotes: line/project/journal/resources | <leader>q* + :Journal
 find & grep: files, buffers, marks, help, MRU | <leader>f*
 telescope pickers: symbols, themes, commits, status | <leader>t*
 diagnostics & lists (Trouble) | <leader>x*
@@ -193,7 +193,7 @@ Remove all clean git worktrees (JJ forget when jj) | <leader>gwx
 Workspace from git PR (JJ bookmark workspace when jj) | <leader>gwp
 ## jj
 ### patches and core
-status / log / new / describe / commit / undo | <leader>gg / gl / gn / ge / gc / gu
+status / log / new / describe / commit / undo | <leader>gg / gl / gn / ge / gC / gu
 fetch / push / redo | <leader>gf / gp / gU
 squash into parent (horizontal term, keeps "Includes squashed:" msg, editor after) | <leader>grs
 squash into parent (horizontal term, instant, no editor) | <leader>grS
@@ -227,14 +227,17 @@ op diff --from-op whole stack (grouped, diffview tab) | <leader>GD
 create snapshot of whole stack (prompts name, default date-time) | <leader>Gsc
 diff current patch / whole stack vs snapshot | <leader>Gsd / <leader>GsD
 restore @ from snapshot: current patch / whole stack | <leader>Gsr / <leader>GsR
-## quicknotes (quicknote.nvim)
-store: ~/.local/share/quicknote/<project>/<scope>/ — never inside the repo
-note at current line (keyed project+file+line) | <leader>qn
+## quicknotes (projnote.nvim)
+store: ~/.local/share/projnote/<project>/ — flat, never inside the repo
+note at current line (readable <stem>_<line>_<hash4>.md, flat per project) | <leader>qn
 note for current project (named, no line) | <leader>qN
+open project journal (same file as /journal-dir-*) | :Journal / <leader>qj
+open project resources (~/projtmp/<project>, new tab + tree) | <leader>qr
 open note at line / open project note | <leader>qo / <leader>qO
 delete note at line | <leader>qd
 list notes: project / current file | <leader>ql / <leader>qL
-jump next / previous note in file | <leader>qj / <leader>qk
+list notes incl. other workspaces: project / current file | <leader>qw / <leader>qW
+jump next / previous note in file | <leader>q] / <leader>q[
 toggle note signs | <leader>qt
 ## jj log panel (<leader>gl) — hover line + press (legend also on panel winbar):
 quick squash into parent, keeps Includes squashed: msg | <S-s>
@@ -315,6 +318,8 @@ Run dragdrop plugin (open floating file picker) | ;d
 Wrap up task (changes, files, caveats, stop) | /wrap-up
 ### Session
 Fork convo to tmp md / restore it | /fork-md [name] / /fork-md-use <name>
+Drive running nvim (tabs, notify) / minimal tmux runner | /nvim-control / /tmuxr
+Box peculiarities in depth (bookmarks, tmux, jj, notes) | /workspace-setup-peculiarities
 Compact convo / resume it | /comp-now / /comp-use
 Plan as bullets | /plan-points
 Short thinking between actions | /show_think
