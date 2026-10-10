@@ -319,12 +319,15 @@ Wrap up task (changes, files, caveats, stop) | /wrap-up
 ### Session
 Fork convo to tmp md / restore it | /fork-md [name] / /fork-md-use <name>
 Drive running nvim (tabs, notify) / minimal tmux runner | /nvim-control / /tmuxr
+Arm convo tripwire, auto-dispatch on fire | /side-condition <watch> [handle by]
 Box peculiarities in depth (bookmarks, tmux, jj, notes) | /workspace-setup-peculiarities
 Compact convo / resume it | /comp-now / /comp-use
+Roll convo, verbatim tail + compressed rest | /comp-roll-now
 Plan as bullets | /plan-points
 Short thinking between actions | /show_think
 Read-only answer, no edits / edit only, no shell | /ask / /edit
 Which skill fits this prompt | /recommend-skill
+Propose skill updates, apply on yes | /propose-skill-updates
 ### Explain
 Explain module why and how | /explain-code
 Plain step-by-step, no jargon | /explain-plainly / /explain-short-simple
@@ -338,12 +341,14 @@ Ponytail review / whole-repo audit / debt ledger / impact board / help | /ponyta
 Per-patch changes | /per_patch
 Fixup as child patch, user squashes later | /per_patch_fixups
 Work on top of current @, keep @ intact | /ontop
-Stage, commit / commit and push | /commit / /commit-push
+Stage, commit / commit and push | /git-workflow-and-versioning / /commit-push
 Stg top-patch msg / strip comments / whole-stack msgs | /stg-last-patch-description / /stg-last-patch-nonverbosecomments / /stg-series-descriptions
-Test-first, repro before fix | /tdd
+Test-first, repro before fix | /test-driven-development
+Additive-only changes, diff must be + lines | /only-additive
+Thin verifiable slices, working state each step | /incremental-implementation
 C++ style guide | /coding-preferences
 ### Review
-Review bugs, safety, simplicity | /review-code
+Review bugs, safety, simplicity | /code-review-and-quality
 PR comment correct? fix if needed | /review-comment-investigate
 Reply to review / post findings / append PR description | /comment-reply / /post-review-comment / /pr-add-to-description
 Open comments addressed in code? | /check-if-open-review-comments-addressed-in-code
@@ -370,18 +375,34 @@ Safe to stamp for client? blast radius first | /ask-if-safe-to-approve-for-clien
 Step-by-step clicks, command if possible | /suggest-actions
 Read-only, no edits or mutable ops | /readonly
 Pick fitting skill and apply it directly | /use-fitting-skill
+Grill underspecified ask, one question at a time | /interview-me
 ### Learn and recall
 Save learning into a skill (confirm first) | /lessons-learned-edit-generic
+Pull relevant past learnings / capture session learning | /learnings-read / /learnings-update
+Read notes / append verbatim note | /notes-read / /notes-update
 Find past convo, show resume command | /search-convos
 ### Investigate
-Deep investigation, findings to file | /investigate
+Deep investigation, findings to file | /debugging-and-error-recovery
 Parse/search logs, traces, correlation | /log-analyzer
+### Community (vendored MIT, addyosmani)
+Refine idea, stress-test doubts, build context | /idea-refine / /doubt-driven-development / /context-engineering
+Spec/source/constraint-driven delivery, simplify | /spec-driven-development / /source-driven-development / /constraint-driven-development / /code-simplification
+Deprecate and migrate / ship and launch | /deprecation-and-migration / /shipping-and-launch
+API design / frontend UI engineering | /api-and-interface-design / /frontend-ui-engineering
+Browser test via devtools / CI-CD / observability / performance | /browser-testing-with-devtools / /ci-cd-and-automation / /observability-and-instrumentation / /performance-optimization
+ADRs and documentation | /documentation-and-adrs
+Dep-graph archaeology / dependency footguns / scope creep | /commit-archaeologist / /dependency-doctor / /scope-creep-detector
+Onboard to codebase via personas / post-mortem unfinished projects / voice ramble to brief | /first-reader / /project-graveyard / /thinking-out-loud
+Meta-loop advisor/orchestrator/worker | /advisor-orchestrator-worker
+Author technical books, validate code samples | /technical-book-writer
 ### Journal
 Read per-directory journal / write it | /journal-dir-read / /journal-dir-update
+Compact journal, rotate .bak-date | /journal-compact
 ### Tasks from file
 Run task from md, progress in same file | /do-task-from-md <path>
 ### Command bookmarks
 Save last cmd / run saved cmd (deps with -d) | /cmdsave [name] / /cmdrun [name] [-d]
+Top-used commands, propose docs | /document-used-commands
 ### Infra
 Agent scratch files rule | /tmp-agent-skill
 Host and tool recipes catalog | /system_assets
