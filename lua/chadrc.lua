@@ -22,6 +22,10 @@ M.base46 = {
     St_EmptySpace = { bg = "#222526" },
     St_pos_text = { bg = "#222526" },
     St_pos_sep = { bg = "#222526" },
+    -- Hide the file-section trailing curve (St_file_sep): it renders as a
+    -- spike against the jj text. The jj module below draws its own square
+    -- cap instead. Only bg+fg overridden; everything else stays themed.
+    St_file_sep = { bg = "#222526", fg = "#222526" },
   },
 }
 
@@ -98,6 +102,8 @@ M.ui = {
       -- Runs jj in the EVALUATED window's cwd (tcd/lcd-aware); empty outside
       -- jj repos. Single-quoted -T templates: container sh is dash, which
       -- chokes on unquoted jj template parens (see mappings/jj.lua _jj_capture).
+      -- Square cap (not the style's curve): the neighboring curve glyphs
+      -- render as spikes next to this text. No cap when empty.
       jj = function()
         local ok, dir = pcall(function()
           local winid = vim.g.statusline_winid or vim.api.nvim_get_current_win()
@@ -110,7 +116,8 @@ M.ui = {
           _jj_cache.at = now
           _jj_cache.text = _jj_status_text(dir)
         end
-        return _jj_cache.text
+        if _jj_cache.text == "" then return "" end
+        return "%#St_cwd_sep#" .. "█" .. _jj_cache.text
       end,
     },
   },

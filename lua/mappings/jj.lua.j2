@@ -80,14 +80,11 @@ end
 -- First line of each squashed desc, truncated to limit + "..." when cut or
 -- when the desc spans multiple lines.
 local function _squash_first_line(desc, limit)
+  -- `...` ONLY when the title itself is too long. Never as a
+  -- "there is more below" marker — the ## sections hold the rest.
   local lines = vim.split(desc or "", "\n")
   local first = vim.trim(lines[1] or "")
-  local multiline = false
-  for i = 2, #lines do
-    if vim.trim(lines[i]) ~= "" then multiline = true break end
-  end
   if #first > limit then return first:sub(1, limit) .. "..." end
-  if multiline then return first .. "..." end
   return first
 end
 
@@ -127,6 +124,24 @@ local function _squash_message(dest_desc, src_descs)
     for _, it in ipairs(items) do table.insert(parts, it) end
     body = table.concat(parts, "\n")
   end
+  -- Long description sections below the itemization: the full original
+  -- body of each squashed patch (minus its first line, which already heads
+  -- the section) under "## squashed N: <first short line>" headers.
+  -- Numbering continues past sections from earlier squashes.
+  local max_n = 0
+  for n in body:gmatch("\n## squashed (%d+):") do
+    max_n = math.max(max_n, tonumber(n) or 0)
+  end
+  local sections = {}
+  for i, d in ipairs(src_descs) do
+    -- Header carries the FULL first line (no truncation, no ...);
+    -- only the itemization above shortens overlong titles.
+    local full_first = vim.trim((vim.trim(d):match("^[^\n]*") or ""))
+    -- Drop the first line from the body: the header already carries it.
+    local rest = vim.trim((vim.trim(d):gsub("^[^\n]*\n?", "", 1)))
+    table.insert(sections, "## squashed " .. (max_n + i) .. ": " .. full_first .. "\n" .. rest)
+  end
+  body = body .. "\n\n" .. table.concat(sections, "\n\n")
   if #trailers > 0 then body = body .. "\n" .. table.concat(trailers, "\n") end
   return body
 end
@@ -1562,9 +1577,16 @@ end, { desc = "jj duplicate stack → bookmark pair (auto-increment)" })
 -- `jj workspace list` prints "<name>: <path> <change> <desc...>" plus possible
 -- status lines (e.g. "Rebased N descendants..."). Path is the FIRST token after
 -- "name: "; everything after is change/desc junk. Lines without "name:" are skipped.
-local function _jj_workspace_list()
+local function _jj_workspace_list(repo)
   local runner = require("jj.core.runner")
-  local out = runner.execute_command("jj workspace list 2>/dev/null", nil, nil, true) or ""
+  -- repo-pinned listing: the caller already resolved the root (tab or
+  -- buffer). Without -R this depends on nvim's cwd, which may sit outside
+  -- any jj repo even when the current tab/buffer is inside one.
+  local cmd = "jj workspace list 2>/dev/null"
+  if repo and repo ~= "" then
+    cmd = "jj --ignore-working-copy -R " .. vim.fn.shellescape(repo) .. " workspace list 2>/dev/null"
+  end
+  local out = runner.execute_command(cmd, nil, nil, true) or ""
   local list = {}
   for _, line in ipairs(vim.split(out, "\n")) do
     line = vim.trim(line)
@@ -1635,10 +1657,9 @@ local function _jj_workspaces_to_base()
   if not root then vim.notify("Not a jj repo", vim.log.levels.WARN) return end
   require("lazy").load({ plugins = { "jj.nvim" } })
   local runner = require("jj.core.runner")
-  local function at(path, args)
-    return vim.trim(runner.execute_command("jj --ignore-working-copy -R " .. vim.fn.shellescape(path) .. " " .. args .. " 2>/dev/null", nil, nil, true) or "")
+  local function at(path, args)    return vim.trim(runner.execute_command("jj --ignore-working-copy -R " .. vim.fn.shellescape(path) .. " " .. args .. " 2>/dev/null", nil, nil, true) or "")
   end
-  local ws = _jj_workspace_list()
+  local ws = _jj_workspace_list(root)
   if #ws == 0 then vim.notify("No jj workspaces", vim.log.levels.WARN) return end
   local moved, left = {}, {}
   for _, w in ipairs(ws) do
@@ -1650,6 +1671,22 @@ local function _jj_workspaces_to_base()
     if diff ~= "" or desc ~= "" then
       table.insert(left, w.name .. " (not empty)")
     else
+      -- Empty @ must sit on a mutable patch. If @ itself is immutable,
+      -- move to the nearest forward mutable commit (children first, then
+      -- any deeper descendant) instead of leaving it parked on immutable.
+      local at_mut = vim.trim(at(w.path, "log --no-graph -r 'mutable() & @' -T 'change_id.shortest(8)'"))
+      if at_mut == "" then
+        local hop = vim.trim((at(w.path, "log --no-graph -r 'children(@) & mutable()' -T 'change_id.shortest(8)'"):match("^(%S+)") or ""))
+        if hop == "" then
+          hop = vim.trim((at(w.path, "log --no-graph -r 'descendants(@) & mutable()' -T 'change_id.shortest(8)'"):match("^(%S+)") or ""))
+        end
+        if hop == "" then
+          table.insert(left, w.name .. " (empty but immutable, no mutable descendant)")
+        else
+          local ok = vim.trim(runner.execute_command("jj --ignore-working-copy -R " .. vim.fn.shellescape(w.path) .. " edit -r " .. vim.fn.shellescape(hop) .. " 2>&1", nil, nil, true) or "")
+          table.insert(moved, w.name .. " → " .. hop .. " (empty immutable @, advanced to mutable)" .. (ok ~= "" and (" (" .. ok .. ")") or ""))
+        end
+      else
       local kids = {}
       for _, l in ipairs(vim.split(at(w.path, "log -r 'heads(descendants(parents(@)))' --no-graph -T 'change_id.shortest(8) ++ \"\\n\"'"), "\n")) do
         l = vim.trim(l)
@@ -1658,14 +1695,32 @@ local function _jj_workspaces_to_base()
       if #kids <= 1 then
         table.insert(left, w.name .. " (linear, fine)")
       else
-        local raw = at(w.path, "fork-base")
+        -- NOTE: jj has no `fork-base` command (it errors); the fork base
+        -- of an empty @ is its parent commit.
+        local raw = at(w.path, "log --no-graph -r 'parents(@)' -T 'change_id.shortest(8)'")
         local base = vim.trim((raw:match("^(%S+)") or ""))
         if base == "" or base == at_id then
           table.insert(left, w.name .. " (no base found" .. (raw ~= "" and (": " .. vim.trim(raw):sub(1, 60)) or "") .. ")")
         else
-          local ok = vim.trim(runner.execute_command("jj --ignore-working-copy -R " .. vim.fn.shellescape(w.path) .. " edit -r " .. vim.fn.shellescape(base) .. " 2>&1", nil, nil, true) or "")
-          table.insert(moved, w.name .. " → " .. base .. (ok ~= "" and (" (" .. ok .. ")") or ""))
+          -- Derived base may itself be immutable (e.g. trunk): advance to
+          -- the next available mutable commit instead of parking @ on it.
+          local target, note = base, ""
+          local is_mut = vim.trim(at(w.path, "log --no-graph -r 'mutable() & " .. base .. "' -T 'change_id.shortest(8)'"))
+          if is_mut == "" then
+            local hop = vim.trim((at(w.path, "log --no-graph -r 'children(" .. base .. ") & mutable()' -T 'change_id.shortest(8)'"):match("^(%S+)") or ""))
+            if hop == "" then
+              hop = vim.trim((at(w.path, "log --no-graph -r 'descendants(" .. base .. ") & mutable()' -T 'change_id.shortest(8)'"):match("^(%S+)") or ""))
+            end
+            if hop ~= "" then
+              target, note = hop, " (base immutable, advanced to mutable)"
+            else
+              note = " (base immutable, no mutable descendant — kept)"
+            end
+          end
+          local ok = vim.trim(runner.execute_command("jj --ignore-working-copy -R " .. vim.fn.shellescape(w.path) .. " edit -r " .. vim.fn.shellescape(target) .. " 2>&1", nil, nil, true) or "")
+          table.insert(moved, w.name .. " → " .. target .. note .. (ok ~= "" and (" (" .. ok .. ")") or ""))
         end
+      end
       end
     end
   end

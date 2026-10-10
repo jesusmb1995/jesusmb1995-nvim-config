@@ -33,7 +33,9 @@ tmux select mode (in visual mode) | space
 tmux copy (in visual mode and select mode) | enter 
 tmux split vertical | <C-b>%
 tmux jump split | <C-b>o
-tmux close splitted | <C-b>&
+tmux kill pane (tab) | <C-b>x
+tmux kill window | <C-b>&
+tmux list windows, pick one | <C-b>w
 rerun last command | r<enter>
 ## Bazel launcher
 reload changes (new targets, etc.) | <C-r>
@@ -105,6 +107,8 @@ Toggle string filter | <leader>fM
 Open with system (e.g. image or folder explorer) | s
 Increase window width | <C-A-S-Right>
 Decrease window width | <C-A-S-Left>
+Increase window height | <C-A-S-Up>
+Decrease window height | <C-A-S-Down>
 Copy path to command line (e.g to easy cd) at current cursor | .
 CD to current cursor dir tree | .cd<enter>
 ## No-neck-pain
@@ -351,6 +355,7 @@ C++ style guide | /coding-preferences
 Review bugs, safety, simplicity | /code-review-and-quality
 PR comment correct? fix if needed | /review-comment-investigate
 Reply to review / post findings / append PR description | /comment-reply / /post-review-comment / /pr-add-to-description
+Soften harsh comment, keep it direct | /soften-review
 Open comments addressed in code? | /check-if-open-review-comments-addressed-in-code
 CI failures related or not, draft comment | /ci-failure-report
 Trigger upstream CI | /run-upstream-ci

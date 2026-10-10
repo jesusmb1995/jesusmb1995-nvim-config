@@ -2,9 +2,11 @@ local M = {}
 
 local map = vim.keymap.set
 
--- Resize panel width with Ctrl+Alt+Shift+Arrows
+-- Resize panel with Ctrl+Alt+Shift+Arrows (Left/Right: width, Up/Down: height)
 map("n", "<C-A-S-Right>", ":vertical resize +5<CR>", { desc = "Increase window width", silent = true })
 map("n", "<C-A-S-Left>", ":vertical resize -5<CR>", { desc = "Decrease window width", silent = true })
+map("n", "<C-A-S-Up>", ":resize +5<CR>", { desc = "Increase window height", silent = true })
+map("n", "<C-A-S-Down>", ":resize -5<CR>", { desc = "Decrease window height", silent = true })
 
 -- Set the current window's size to `fraction` of the combined size of the
 -- current window and one neighbor along `axis` ("width": left/right windows,
