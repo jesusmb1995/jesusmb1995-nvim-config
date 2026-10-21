@@ -1,5 +1,63 @@
 local map = vim.keymap.set
 
+-- The remote_git shims run git/jj on the remote for cwds inside a remotefs
+-- mount, so the producers below get back REMOTE absolute paths. Map them to the
+-- local sshfs mount so :cd/:tcd/isdirectory address real local paths. No-op
+-- when remotefs is absent or the path isn't under a provider (returns p).
+local function to_local(p)
+  if not p or p == "" then return p end
+  local ok, exec = pcall(require, "remotefs.exec")
+  if not ok or not exec.remote_to_local then return p end
+  return exec.remote_to_local(p) or p
+end
+
+-- Local mount path -> remote absolute path (inverse of to_local). No-op when
+-- remotefs is absent or the path isn't under a provider (returns p).
+local function to_remote(p)
+  if not p or p == "" then return p end
+  local ok, exec = pcall(require, "remotefs.exec")
+  if not ok or not exec.remote_cwd_for then return p end
+  return exec.remote_cwd_for(p) or p
+end
+
+-- Sibling worktree/workspace dir ../<repo>-<name>. Computed on the REMOTE root:
+-- a local mount root's parent is the mount container (e.g. .../root_localhost),
+-- which is outside every provider, so the shim can't rewrite it and the remote
+-- git/jj would receive a bogus path. Map the remote sibling back to the local
+-- mount for :cd/:tcd. Returns the path to pass to git/jj (local when mappable,
+-- else the remote path, which the shim passes through untouched).
+local function sibling_worktree_dir(root, name)
+  local rroot = (to_remote(root) or root):gsub("/+$", "")
+  local remote_dir = vim.fn.fnamemodify(rroot, ":h") .. "/" .. vim.fn.fnamemodify(rroot, ":t") .. "-" .. name
+  return to_local(remote_dir)
+end
+
+-- Create a jj workspace, surfacing jj's real stderr (the bare "failed" notify
+-- hid the cause). A stale working copy blocks `workspace add`; do NOT retry with
+-- --ignore-working-copy (it creates the workspace but still exits 1) and do NOT
+-- auto-run update-stale (it checks out @ and REMOVES files not in it). Point at
+-- the fix instead.
+local function jj_workspace_add(name, dir, gw_root, on_ok)
+  local err = {}
+  vim.fn.jobstart({ "jj", "workspace", "add", "--name", name, "-r", "@", dir }, {
+    cwd = gw_root,
+    stderr_buffered = true,
+    on_stderr = function(_, data) vim.list_extend(err, data) end,
+    on_exit = function(_, code)
+      vim.schedule(function()
+        local e = vim.trim(table.concat(err, "\n"))
+        if code == 0 then
+          on_ok()
+        elseif e:lower():find("stale") then
+          vim.notify("JJ workspace add: working copy is stale — run `jj workspace update-stale` first (it checks out @ and can remove files not in it).\n" .. e, vim.log.levels.ERROR)
+        else
+          vim.notify("JJ workspace add failed: " .. (e ~= "" and e or ("exit " .. code)), vim.log.levels.ERROR)
+        end
+      end)
+    end,
+  })
+end
+
 -- Tab-local cwd, explicit per-tab query: gwg opens one tab per jj workspace via
 -- tcd, so the TAB (not the buffer — tabnew keeps showing the old buffer) is
 -- the worktree the workspace list, the `*` marker and @ resolution follow.
@@ -13,7 +71,7 @@ end
 local function jj_root_of(dir)
   if dir == nil or dir == "" then return nil end
   local out = vim.fn.system({ "sh", "-c", "cd " .. vim.fn.shellescape(dir) .. " && jj root 2>/dev/null" })
-  if vim.v.shell_error == 0 and vim.trim(out) ~= "" then return vim.trim(out) end
+  if vim.v.shell_error == 0 and vim.trim(out) ~= "" then return to_local(vim.trim(out)) end
   return nil
 end
 
@@ -72,7 +130,7 @@ local function jj_workspace_list_scoped(root)
   if not ok then return {}, jj_root end
   local list = {}
   local cur_norm = norm_dir(tab_dir)
-  local scope_name = vim.fn.fnamemodify(tab_dir, ":t")
+  local scope_name = vim.fn.fnamemodify(to_remote(tab_dir) or tab_dir, ":t")
   if scope_name == "" or scope_name == "." then scope_name = nil end
   for _, line in ipairs(vim.split(vim.trim(out), "\n")) do
     line = vim.trim(line)
@@ -81,6 +139,7 @@ local function jj_workspace_list_scoped(root)
       if name and rest then
         local p = rest:match("^(%S+)")
         if p then
+          p = to_local(p)
           local abs = p:sub(1, 1) == "/" and p or (jj_root .. "/" .. p)
           local is_cur = norm_dir(abs) == cur_norm
           local ws_name = vim.fn.fnamemodify(abs, ":t")
@@ -111,7 +170,7 @@ local function git_root()
   if vim.v.shell_error ~= 0 or not result or #result == 0 then
     return nil
   end
-  return vim.trim(result[1])
+  return to_local(vim.trim(result[1]))
 end
 
 -- Helper: list git worktree paths (uses git CLI)
@@ -128,7 +187,7 @@ local function git_worktree_list()
   for _, line in ipairs(job:result()) do
     local path = line:match("^worktree%s+(.+)$")
     if path and #path > 0 then
-      table.insert(paths, vim.trim(path))
+      table.insert(paths, to_local(vim.trim(path)))
     end
   end
   return paths
@@ -293,24 +352,15 @@ map("n", "<leader>gwK", function()
     vim.ui.input({ prompt = "New jj workspace name (bookmark) for new nvim: " }, function(name)
       if not name or vim.trim(name) == "" then return end
       name = vim.trim(name)
-      local parent = vim.fn.fnamemodify(gw_root, ":h")
-      local worktree_dir = parent .. "/" .. vim.fn.fnamemodify(gw_root, ":t") .. "-" .. name
-      vim.fn.jobstart({ "jj", "workspace", "add", "--name", name, worktree_dir }, {
-      cwd = gw_root,
-        cwd = gw_root,
-        on_exit = function(_, code)
-          vim.schedule(function()
-            if code == 0 then
-              local nvim_bin = vim.v.progpath
-              local tmux_env = vim.fn.getenv("TMUX")
-              if tmux_env ~= vim.NIL and tmux_env ~= "" then vim.fn.jobstart({ "tmux", "new-window", "-c", worktree_dir, nvim_bin }, { detach = true })
-              elseif vim.fn.executable("alacritty") == 1 then vim.fn.jobstart({ "alacritty", "--working-directory", worktree_dir, "-e", nvim_bin }, { detach = true })
-              else vim.notify("No supported terminal", vim.log.levels.ERROR) return end
-              vim.notify("JJ workspace created and nvim opened: " .. worktree_dir, vim.log.levels.INFO)
-            else vim.notify("JJ workspace add failed", vim.log.levels.ERROR) end
-          end)
-        end,
-      })
+      local worktree_dir = sibling_worktree_dir(gw_root, name)
+      jj_workspace_add(name, worktree_dir, gw_root, function()
+        local nvim_bin = vim.v.progpath
+        local tmux_env = vim.fn.getenv("TMUX")
+        if tmux_env ~= vim.NIL and tmux_env ~= "" then vim.fn.jobstart({ "tmux", "new-window", "-c", worktree_dir, nvim_bin }, { detach = true })
+        elseif vim.fn.executable("alacritty") == 1 then vim.fn.jobstart({ "alacritty", "--working-directory", worktree_dir, "-e", nvim_bin }, { detach = true })
+        else vim.notify("No supported terminal", vim.log.levels.ERROR) return end
+        vim.notify("JJ workspace created and nvim opened: " .. worktree_dir, vim.log.levels.INFO)
+      end)
     end)
     return
   end
@@ -319,7 +369,6 @@ map("n", "<leader>gwK", function()
   local notify = vim.notify
   local root = git_root()
   if not root then notify("Not inside a Git repository", vim.log.levels.ERROR) return end
-  local repo_name = vim.fn.fnamemodify(root, ":t")
   local branches = {}
   Job:new({
     command = "git",
@@ -330,8 +379,7 @@ map("n", "<leader>gwK", function()
         for _, branch in ipairs(j:result()) do local b = vim.trim(branch); if #b > 0 then table.insert(branches, b) end end
         vim.ui.select(branches, { prompt = "Select branch to create worktree (new nvim):" }, function(branch_name)
           if not branch_name then return end
-          local parent_dir = vim.fn.fnamemodify(root, ":h")
-          local worktree_dir = parent_dir .. "/" .. repo_name .. "-" .. branch_name
+          local worktree_dir = sibling_worktree_dir(root, branch_name)
           local all_wts = git_worktree_list()
           for _, wt_path in ipairs(all_wts or {}) do if vim.fn.fnamemodify(wt_path, ":p") == vim.fn.fnamemodify(worktree_dir, ":p") then notify("Worktree already exists at: " .. worktree_dir, vim.log.levels.INFO); open_nvim_in_new_instance(worktree_cd_target(worktree_dir)); return end end
           Job:new({ command = "git", args = { "worktree", "add", worktree_dir, branch_name }, cwd = root, on_exit = function(j2, return_val) vim.schedule(function() if return_val == 0 then notify("Worktree created: " .. worktree_dir, vim.log.levels.INFO); open_nvim_in_new_instance(worktree_cd_target(worktree_dir)) else notify("Error creating worktree: " .. table.concat(j2:stderr_result(), " "), vim.log.levels.ERROR) end end) end }):start()
@@ -349,7 +397,7 @@ map("n", "<leader>gwH", function()
     if vim.v.shell_error == 0 and vim.trim(out) ~= "" then
       local list = {}
       for _, line in ipairs(vim.split(out, "\n")) do line = vim.trim(line); if line ~= "" then
-        local name, rest = line:match("^(%S+):%s*(.+)$"); if name and rest then local path = rest:match("^(%S+)"); if path then table.insert(list, { label = line, path = path }) end end
+        local name, rest = line:match("^(%S+):%s*(.+)$"); if name and rest then local path = rest:match("^(%S+)"); if path then table.insert(list, { label = line, path = to_local(path) }) end end
       end end
       if #list > 0 then
         vim.ui.select(list, { prompt = "Select jj workspace (new nvim):", format_item = function(i) return i.label end }, function(c)
@@ -527,23 +575,12 @@ map("n", "<leader>gwc", function()
     vim.ui.input({ prompt = "New jj workspace name (bookmark): " }, function(name)
       if not name or vim.trim(name) == "" then return end
       name = vim.trim(name)
-      local parent = vim.fn.fnamemodify(gw_root, ":h")
-      local worktree_dir = parent .. "/" .. vim.fn.fnamemodify(gw_root, ":t") .. "-" .. name
-      vim.fn.jobstart({ "jj", "workspace", "add", "--name", name, worktree_dir }, {
-      cwd = gw_root,
-        cwd = gw_root,
-        on_exit = function(_, code)
-          vim.schedule(function()
-            if code == 0 then
-              vim.notify("JJ workspace created: " .. worktree_dir, vim.log.levels.INFO)
-              vim.cmd("tabnew")
-              vim.cmd("tcd " .. vim.fn.fnameescape(worktree_dir))
-            else
-              vim.notify("JJ workspace add failed", vim.log.levels.ERROR)
-            end
-          end)
-        end,
-      })
+      local worktree_dir = sibling_worktree_dir(gw_root, name)
+      jj_workspace_add(name, worktree_dir, gw_root, function()
+        vim.notify("JJ workspace created: " .. worktree_dir, vim.log.levels.INFO)
+        vim.cmd("tabnew")
+        vim.cmd("tcd " .. vim.fn.fnameescape(worktree_dir))
+      end)
     end)
     return
   end
@@ -555,7 +592,6 @@ map("n", "<leader>gwc", function()
     notify("Not inside a Git repository", vim.log.levels.ERROR)
     return
   end
-  local repo_name = vim.fn.fnamemodify(root, ":t")
 
   local branches = {}
   Job:new({
@@ -575,8 +611,7 @@ map("n", "<leader>gwc", function()
         vim.ui.select(branches, { prompt = "Select branch to create worktree:" }, function(branch_name)
           if not branch_name then return end
 
-          local parent_dir = vim.fn.fnamemodify(root, ":h")
-          local worktree_dir = parent_dir .. "/" .. repo_name .. "-" .. branch_name
+          local worktree_dir = sibling_worktree_dir(root, branch_name)
 
           local all_wts = git_worktree_list()
           for _, wt_path in ipairs(all_wts or {}) do
@@ -621,21 +656,12 @@ map("n", "<leader>gwC", function()
     vim.ui.input({ prompt = "New jj workspace name (bookmark) for new tab: " }, function(name)
       if not name or vim.trim(name) == "" then return end
       name = vim.trim(name)
-      local parent = vim.fn.fnamemodify(gw_root, ":h")
-      local worktree_dir = parent .. "/" .. vim.fn.fnamemodify(gw_root, ":t") .. "-" .. name
-      vim.fn.jobstart({ "jj", "workspace", "add", "--name", name, worktree_dir }, {
-      cwd = gw_root,
-        cwd = gw_root,
-        on_exit = function(_, code)
-          vim.schedule(function()
-            if code == 0 then
-              vim.cmd("tabnew")
-              vim.cmd("tcd " .. vim.fn.fnameescape(worktree_dir))
-              vim.notify("JJ workspace tab: " .. worktree_dir, vim.log.levels.INFO)
-            else vim.notify("JJ workspace add failed", vim.log.levels.ERROR) end
-          end)
-        end,
-      })
+      local worktree_dir = sibling_worktree_dir(gw_root, name)
+      jj_workspace_add(name, worktree_dir, gw_root, function()
+        vim.cmd("tabnew")
+        vim.cmd("tcd " .. vim.fn.fnameescape(worktree_dir))
+        vim.notify("JJ workspace tab: " .. worktree_dir, vim.log.levels.INFO)
+      end)
     end)
     return
   end
@@ -647,7 +673,6 @@ map("n", "<leader>gwC", function()
     notify("Not inside a Git repository", vim.log.levels.ERROR)
     return
   end
-  local repo_name = vim.fn.fnamemodify(root, ":t")
 
   local branches = {}
   Job:new({
@@ -667,8 +692,7 @@ map("n", "<leader>gwC", function()
         vim.ui.select(branches, { prompt = "Select branch to create worktree (new nvim):" }, function(branch_name)
           if not branch_name then return end
 
-          local parent_dir = vim.fn.fnamemodify(root, ":h")
-          local worktree_dir = parent_dir .. "/" .. repo_name .. "-" .. branch_name
+          local worktree_dir = sibling_worktree_dir(root, branch_name)
 
           local all_wts = git_worktree_list()
           for _, wt_path in ipairs(all_wts or {}) do
@@ -714,9 +738,11 @@ map("n", "<leader>gwp", function()
     if #bms == 0 then vim.notify("No jj bookmarks for workspace", vim.log.levels.WARN) return end
     vim.ui.select(bms, { prompt = "Select jj bookmark for new workspace:" }, function(choice)
       if not choice then return end
-      local parent = vim.fn.fnamemodify(gw_root, ":h")
-      local dir = parent .. "/" .. vim.fn.fnamemodify(gw_root, ":t") .. "-" .. choice
-      vim.fn.jobstart({ "jj", "workspace", "add", "--name", choice .. "-wt", dir }, { cwd = gw_root, on_exit = function(_, code) vim.schedule(function() if code==0 then vim.cmd("cd " .. vim.fn.fnameescape(dir)); vim.notify("JJ workspace for " .. choice .. " at " .. dir, vim.log.levels.INFO) else vim.notify("JJ workspace add failed", vim.log.levels.ERROR) end end) end })
+      local dir = sibling_worktree_dir(gw_root, choice)
+      jj_workspace_add(choice .. "-wt", dir, gw_root, function()
+        vim.cmd("cd " .. vim.fn.fnameescape(dir))
+        vim.notify("JJ workspace for " .. choice .. " at " .. dir, vim.log.levels.INFO)
+      end)
     end)
     return
   end
@@ -733,7 +759,6 @@ map("n", "<leader>gwp", function()
     notify("Not inside a Git repository", vim.log.levels.ERROR)
     return
   end
-  local repo_name = vim.fn.fnamemodify(root, ":t")
 
   -- pick remote: prefer upstream, fallback origin
   local remotes = vim.fn.systemlist({ "git", "-C", root, "remote" })
@@ -784,8 +809,7 @@ map("n", "<leader>gwp", function()
         local function do_checkout(item)
           local num = item.number
           local local_branch = "pr-" .. num
-          local parent_dir = vim.fn.fnamemodify(root, ":h")
-          local worktree_dir = parent_dir .. "/" .. repo_name .. "-pr-" .. num
+          local worktree_dir = sibling_worktree_dir(root, "pr-" .. num)
 
           local all_wts = git_worktree_list()
           for _, wt_path in ipairs(all_wts or {}) do

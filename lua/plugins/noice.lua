@@ -48,6 +48,7 @@ return {
         -- `  <full-path>` at eol, like `full_name` but always visible on hover.
         local hover_ns = vim.api.nvim_create_namespace("nvimtree-hover-" .. bufnr)
         local function clear_hover()
+          if not vim.api.nvim_buf_is_valid(bufnr) then return end
           vim.api.nvim_buf_clear_namespace(bufnr, hover_ns, 0, -1)
         end
         local function show_hover(explicit)
